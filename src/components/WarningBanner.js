@@ -4,7 +4,7 @@ import "./WarningBanner.css";
 // Bump this string with every reverse-engineering patch so we can eyeball
 // in the running app whether the latest code is actually loaded.
 // Format: RE-N (parameter1, parameter2, ...)
-export const RE_PATCH_VERSION = "RE-44 (OSC Type: clean 22-band nearest-match from P451 walk)";
+export const RE_PATCH_VERSION = "RE-45 (OSC Wave/Timbre/Shape: marker-anchored via FParam1-3)";
 
 export class WarningBanner extends Component {
 

@@ -717,6 +717,7 @@ const EG2_SECTION = [0x40,0x23,0x45,0x47,0x32,0x44,0x4d,0x6f,0x64,0x65];      //
 const ARP_SECTION = [0x40,0x23,0x41,0x72,0x70,0x46,0x45,0x6e,0x61,0x62,0x6c,0x65]; // '@#ArpFEnable'
 const KBD_SECTION = [0x40,0x23,0x4b,0x62,0x64,0x45,0x47,0x6c,0x69,0x64,0x65]; // '@#KbdEGlide'
 const GEN_SECTION = [0x40,0x23,0x47,0x65,0x6e,0x47,0x50,0x61,0x72,0x61,0x66,0x6f,0x6e]; // '@#GenGParafon'
+const VCOD_SECTION = [0x23,0x56,0x43,0x4f,0x44,0x54,0x79,0x70,0x65]; // '#VCODType' (start of stream, no leading '@')
 
 // Sub-markers.
 const SUB_CDIV     = [0x43,0x44,0x69,0x76];                               // 'CDiv'
@@ -738,6 +739,9 @@ const SUB_ESPICE   = [0x45,0x53,0x70,0x69,0x63,0x65];                     // 'ES
 const SUB_ESEQON   = [0x45,0x53,0x65,0x71,0x4f,0x6e];                     // 'ESeqOn'
 const SUB_FOCTAVE  = [0x46,0x4f,0x63,0x74,0x61,0x76,0x65];                // 'FOctave'
 const SUB_ERANGE   = [0x45,0x52,0x61,0x6e,0x67,0x65];                     // 'ERange'
+const SUB_FPARAM1  = [0x46,0x50,0x61,0x72,0x61,0x6d,0x31];                // 'FParam1' (OSC Wave)
+const SUB_FPARAM2  = [0x46,0x50,0x61,0x72,0x61,0x6d,0x32];                // 'FParam2' (OSC Timbre)
+const SUB_FPARAM3  = [0x46,0x50,0x61,0x72,0x61,0x6d,0x33];                // 'FParam3' (OSC Shape)
 
 // LFO decoders.
 export function decodeLfoShape(data)    { return readSectionParam(data, LFO_SECTION, null);      }
@@ -799,10 +803,21 @@ export function decodeFilterAmt(data)     { return decodeModMatrixFW2(data, MOD_
 // start of the packed block. Nearest-match against OSC_TYPE_TABLE band
 // centers. Source: prescan walk on preset 451 (see
 // reverse-engineering/findings.json, osc_type_prescan).
+// NOTE: factory presets (fmt != 0x16) may use a legacy encoding we can't
+// decode without more walks; re-saving on device migrates them to the
+// current encoding that this decoder understands.
 export function decodeOscType(data) {
     if (!data || !data[0] || data[0].length <= 14) return null;
     return data[0][14];
 }
+
+// OSC Wave / Timbre / Shape: sub-markers 'FParam1' / 'FParam2' / 'FParam3'
+// within the #VCODType section. Stable positions across all fmts observed
+// (0x0c/0x11/0x12/0x16): FParam1@13, FParam2@24, FParam3@35 in the
+// unpacked stream. Layout: '<marker>c<tag=0xee><LSB><MSB>'.
+export function decodeOscWave(data)   { return readSectionParam(data, VCOD_SECTION, SUB_FPARAM1); }
+export function decodeOscTimbre(data) { return readSectionParam(data, VCOD_SECTION, SUB_FPARAM2); }
+export function decodeOscShape(data)  { return readSectionParam(data, VCOD_SECTION, SUB_FPARAM3); }
 
 export function decodeModMatrixFW2(data, src, dest) {
     const s = MOD_MATRIX_FW2_SRC_INDEX.get(src);
@@ -1129,6 +1144,7 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [OSC_WAVE]: {
+            decoder: decodeOscWave,
             MSB: [0, 27],
             LSB: [0, 26],
             //sign: [0, 0, 0x02],
@@ -1139,6 +1155,7 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [OSC_TIMBRE]: {
+            decoder: decodeOscTimbre,
             MSB: [1, 7],
             LSB: [1, 6],
             //sign: [0, 0, 0x02],
@@ -1149,6 +1166,7 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [OSC_SHAPE]: {      // ok
+            decoder: decodeOscShape,
             MSB: [1, 20],
             LSB: [1, 19],
             //sign: [0, 0, 0x02],
@@ -1334,6 +1352,7 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [OSC_WAVE]: {
+            decoder: decodeOscWave,
             LSB: [0, 26],
             MSB: [0, 27],
             //sign: [0, 0, 0x02],
@@ -1344,6 +1363,7 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [OSC_TIMBRE]: {
+            decoder: decodeOscTimbre,
             LSB: [1, 6],
             MSB: [1, 7],
             msb: [1, 0, 0x20],
@@ -1353,6 +1373,7 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [OSC_SHAPE]: {      // ok
+            decoder: decodeOscShape,
             MSB: [1, 20],
             LSB: [1, 19],
             //sign: [0, 0, 0x02],

@@ -65,12 +65,21 @@ Items still open:
 - **§3 ARP_SEQ_RATE non-full-range knob**: walked max still saturates at
   ~96.13 %; the BPM mapping divides by 96.13 to compensate. Works, but
   root cause not understood.
-- **OSC_TYPE**: still uses hardcoded `data[0][14]`. The 22-band `_osc_type`
-  mapping was reordered in RE-33 based on user's device display, but the
-  byte-position is still fmt-0x16-specific. The section marker for OSC is
-  `#VCODType` (without leading `@`, first of the stream), and the enum
-  value probably lives differently than 16-bit LSB/MSB knobs — to be
-  worked out in a future pass.
+- **OSC_TYPE (RE-44)**: decoded via `data[0][14]` against a 22-band
+  nearest-match table (walk on P451 provided the exact band centres). Works
+  correctly for **user-saved presets (fmt 0x16)**. Fails for factory
+  presets in other fmts (0x0c, 0x0d, 0x0e, 0x11, 0x12, 0x7f) because those
+  use a legacy encoding we haven't reverse-engineered — a fresh
+  before/after-save diff on P431 (copy of P2) showed the MF rewrites the
+  fmt marker (0x12 → 0x16) AND data[0][14] (0x7F → 0x68 = WaveUser) during
+  save, confirming the legacy vs modern encoding split. User-visible
+  consequence: ~30% of unsaved factory presets may show wrong OSC type;
+  re-saving on the MF migrates them and fixes display. Workaround is
+  simpler than walking 6 more legacy fmts.
+- **OSC Wave / Timbre / Shape (RE-45)**: marker-anchored via sub-markers
+  `FParam1/2/3` in the `#VCODType` section. Verified equivalent to the
+  hardcoded `[0][26/27]` / `[1][6/7]` / `[1][19/20]` positions for all
+  fmts in the user's dump.
 - **AMP_MOD**: location unclear; not yet migrated. Visible in UI but
   correctness not verified by user.
 
