@@ -65,17 +65,38 @@ Items still open:
 - **§3 ARP_SEQ_RATE non-full-range knob**: walked max still saturates at
   ~96.13 %; the BPM mapping divides by 96.13 to compensate. Works, but
   root cause not understood.
-- **OSC_TYPE (RE-44)**: decoded via `data[0][14]` against a 22-band
-  nearest-match table (walk on P451 provided the exact band centres). Works
-  correctly for **user-saved presets (fmt 0x16)**. Fails for factory
-  presets in other fmts (0x0c, 0x0d, 0x0e, 0x11, 0x12, 0x7f) because those
-  use a legacy encoding we haven't reverse-engineered — a fresh
-  before/after-save diff on P431 (copy of P2) showed the MF rewrites the
-  fmt marker (0x12 → 0x16) AND data[0][14] (0x7F → 0x68 = WaveUser) during
-  save, confirming the legacy vs modern encoding split. User-visible
-  consequence: ~30% of unsaved factory presets may show wrong OSC type;
-  re-saving on the MF migrates them and fixes display. Workaround is
-  simpler than walking 6 more legacy fmts.
+- **OSC_TYPE (RE-44)**: decoded via the primary 16-bit value of the
+  `#VCODType` section (marker-anchored). Linear mapping: `raw = index/22 ×
+  32767`, where index 1..22 is the **firmware-introduction** order (not
+  the knob's **display** order — Vocoder was added at slot 14 between
+  Noise and Bass, but displays last on the knob). Band centres derived
+  from a fresh prescan walk on P451.
+  - **Works for ~59% of presets** in the user's dump (272/462): any preset
+    whose `#VCODType` primary is non-saturated, including many factory
+    presets across all fmts (e.g. P7 Traditon fmt 0x0c → 0x4000 = Speech
+    exact; P9 Vanarx fmt 0x0c → 0x4AAA ≈ Noise; P8 Juliet Fries fmt 0x11
+    → 0x52D2 ≈ Vocoder).
+  - **Fails for ~41% of presets** (190/462): those whose primary saturates
+    at 0x7FFF. MF still displays the correct OSC type for these via some
+    legacy fallback logic that uses bytes we can see but cannot decode
+    without MF firmware access. Our exhaustive probe — comparing P2
+    (WaveUser) with P3 (Harm), both saturated — found only the
+    `FParam1` tag byte as a partial classifier (4 distinct values,
+    buckets 22 types into 4 groups, identifying WaveUser / WaveTable /
+    Superwave / Chords only).
+  - **Why we can't reverse-engineer the legacy encoding:** the MF does
+    NOT allow in-place saves to factory slots — you can only COPY the
+    preset to a user slot, then save. The save step rewrites the entire
+    structure into the modern encoding (fmt 0x11/0x12 → 0x16, `[0][14]`
+    0x7F → walk-mapped value, ~30+ other bytes restructured — verified
+    with before/after-save diff on P431). So the walk tool can never
+    capture the legacy encoding directly; it always migrates first.
+    Cracking the legacy encoding would require either MF firmware access
+    or manually reading OSC types off the MF display for all 190
+    saturated presets and statistically reverse-engineering the lookup
+    table — not worth the effort.
+  - **User workaround:** load the factory preset on the MF, press Save.
+    App now displays the OSC type correctly.
 - **OSC Wave / Timbre / Shape (RE-45)**: marker-anchored via sub-markers
   `FParam1/2/3` in the `#VCODType` section. Verified equivalent to the
   hardcoded `[0][26/27]` / `[1][6/7]` / `[1][19/20]` positions for all

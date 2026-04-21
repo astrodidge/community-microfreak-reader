@@ -32,13 +32,23 @@ Community fork of MicroFreak Reader — a React/Electron app for reading and dis
   reading only 40 blocks will miss them.
 - **Factory vs user preset format differs substantially.** Saving a factory
   preset to a user slot re-serialises it (blocks differ byte-for-byte).
-  `data[0][12]` appears to be a format marker:
+  `data[0][12]` is a format marker — seven values seen in the wild:
     - `0x0C` (12): FW1 (legacy)
-    - `0x11` (17): factory, modern firmware
-    - `0x16` (22): user, modern firmware
-  The React code's `fwVersion()` lumps 0x11 and 0x16 together as FW2, hiding
-  the real difference. The byte-position mappings that work for user presets
-  may not work for factory presets (observed empirically for the mod matrix).
+    - `0x0D`, `0x0E`, `0x11`, `0x12`, `0x7F`: intermediate factory fmts
+    - `0x16` (22): user, modern firmware (what MF writes on save)
+  The React code's `fwVersion()` lumps everything non-0x0C together as FW2.
+  Since RE-32..RE-45 the model reads are fully **marker-anchored** (search
+  for ASCII markers like `@#LFOEShape`, `@#VCFDType`, `#VCODType`, etc. in
+  the unpacked stream) — this makes reads robust across all fmts.
+- **OSC Type has a legacy-encoding blind spot.** `#VCODType` primary 16-bit
+  value maps linearly to 22 OSC types (index/22 × 32767) for ~59 % of
+  presets. For the remaining ~41 % the primary saturates to `0x7FFF` and
+  MF uses internal legacy-fallback logic we can't reverse-engineer without
+  firmware access (the MF re-encodes the whole preset on save, so a walk
+  can never capture the pre-save legacy encoding). User workaround: load
+  the factory preset on MF and press Save — rewrites the encoding to the
+  modern form, after which the app decodes it correctly. See
+  `reverse-engineering/followups.md` for the full investigation.
 
 ## How the Build Tooling Works
 
