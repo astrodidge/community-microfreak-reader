@@ -2200,6 +2200,306 @@
           "distinctCount": 2
         }
       ]
+    },
+    "osc_typ_prescan": {
+      "paramId": "osc_typ",
+      "mappedAt": "2026-04-21T16:29:00.870Z",
+      "displayPreset": 451,
+      "sweep": [
+        {
+          "label": "WaveUser",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Sample",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Scan Grains",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Cloud Grains",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Hit Grains",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Vocoder",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Basic Waves",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Superwave",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "WaveTable",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Harmo",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "KarplusStr",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "V. Analog",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "WaveShaper",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Two Op. FM",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Formant",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Chords",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Speech",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Modal",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Noise",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Bass",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "SawX",
+          "presetName": "BB3L"
+        },
+        {
+          "label": "Harm",
+          "presetName": "BB3L"
+        }
+      ],
+      "positions": [
+        {
+          "block": 0,
+          "byte": 8,
+          "values": [
+            16,
+            16,
+            0,
+            0,
+            16,
+            0,
+            16,
+            16,
+            0,
+            0,
+            0,
+            16,
+            16,
+            16,
+            0,
+            0,
+            0,
+            16,
+            16,
+            0,
+            0,
+            16
+          ],
+          "distinctCount": 2
+        },
+        {
+          "block": 0,
+          "byte": 13,
+          "values": [
+            57,
+            11,
+            92,
+            46,
+            127,
+            116,
+            81,
+            35,
+            116,
+            70,
+            23,
+            104,
+            58,
+            11,
+            93,
+            46,
+            0,
+            81,
+            34,
+            69,
+            23,
+            104
+          ],
+          "distinctCount": 16
+        },
+        {
+          "block": 0,
+          "byte": 14,
+          "values": [
+            104,
+            110,
+            116,
+            122,
+            127,
+            81,
+            5,
+            11,
+            17,
+            23,
+            29,
+            34,
+            40,
+            46,
+            52,
+            58,
+            64,
+            69,
+            75,
+            87,
+            93,
+            98
+          ],
+          "distinctCount": 22
+        },
+        {
+          "block": 0,
+          "byte": 24,
+          "values": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "distinctCount": 2
+        },
+        {
+          "block": 0,
+          "byte": 25,
+          "values": [
+            15,
+            110,
+            110,
+            110,
+            110,
+            110,
+            110,
+            3,
+            15,
+            110,
+            110,
+            110,
+            110,
+            110,
+            110,
+            10,
+            110,
+            110,
+            110,
+            110,
+            110,
+            110
+          ],
+          "distinctCount": 4
+        },
+        {
+          "block": 3,
+          "byte": 16,
+          "values": [
+            0,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            0,
+            8,
+            0,
+            0,
+            0,
+            0,
+            8,
+            8,
+            8,
+            8,
+            0,
+            8,
+            8,
+            0,
+            0
+          ],
+          "distinctCount": 2
+        },
+        {
+          "block": 3,
+          "byte": 21,
+          "values": [
+            113,
+            105,
+            105,
+            105,
+            105,
+            127,
+            127,
+            113,
+            127,
+            98,
+            113,
+            113,
+            113,
+            105,
+            127,
+            105,
+            117,
+            113,
+            127,
+            96,
+            113,
+            113
+          ],
+          "distinctCount": 6
+        }
+      ]
     }
   }
 }

@@ -122,50 +122,48 @@ const _rangedPow = (max, k, unit) => function (v) {
     return unit ? `${str} ${unit}` : str;
 };
 
-// OSC type names in FIRMWARE-INTRODUCTION order. This is NOT the same as the
-// knob's DISPLAY order on the hardware — Vocoder was added to the firmware
-// at slot 14 (right after Noise), but the MF displays it LAST on the knob as
-// position 22. The primary 16-bit value in the '#VCODType c' section maps
-// linearly to this intro order: raw = index/22 × 32767 (rounded). Derived
-// from the walk on preset 500 (all 22 types captured, see
-// reverse-engineering/findings.json, osc_type_prescan).
-// Harm/SawX intro order: the walk captured both with primary=23831, which is
-// an exact match for intro pos 16. Since primary values are unique per type,
-// the other one (likely SawX) should be at intro pos 17 (target ~25321) —
-// the walk probably missed a save between the two.
-const OSC_TYPE_INTRO_ORDER = [
-    "Basic\nWaves",     //  1  target  1489
-    "Superwave",        //  2        2979
-    "Wavetable",        //  3        4469
-    "Harmo",            //  4        5958
-    "Karplus\nStrong",  //  5        7447
-    "V. Analog",        //  6        8940
-    "Waveshaper",       //  7       10429
-    "Two Op.\nFM",      //  8       11919
-    "Formant",          //  9       13408
-    "Chords",           // 10       14898
-    "Speech",           // 11       16384
-    "Modal",            // 12       17877
-    "Noise",            // 13       19367
-    "Vocoder",          // 14       20852
-    "Bass",             // 15       22341
-    "Harm",             // 16       23831
-    "SawX",             // 17       25321 (inferred; walk missed save)
-    "User\nWavetable",  // 18       26810
-    "Sample",           // 19       28299
-    "Scan\nGrains",     // 20       29788
-    "Cloud\nGrains",    // 21       31278
-    "Hit\nGrains",      // 22       32767
+// OSC type center values at data[0][14], from prescan walk on preset 451
+// (see reverse-engineering/findings.json, osc_type_prescan). Each type
+// maps to a single 7-bit byte value in FIRMWARE-INTRODUCTION order — NOT
+// the knob's DISPLAY order. Vocoder was added early (raw 81, between
+// Noise=75 and Bass=87 by byte value) but the MF displays it LAST on the
+// knob (position 22 in display order). Step ~5-6 units per band.
+const OSC_TYPE_TABLE = [
+    [  5, "Basic\nWaves"    ],  //  1
+    [ 11, "Superwave"       ],  //  2
+    [ 17, "Wavetable"       ],  //  3
+    [ 23, "Harmo"           ],  //  4
+    [ 29, "Karplus\nStrong" ],  //  5
+    [ 34, "V. Analog"       ],  //  6
+    [ 40, "Waveshaper"      ],  //  7
+    [ 46, "Two Op.\nFM"     ],  //  8
+    [ 52, "Formant"         ],  //  9
+    [ 58, "Chords"          ],  // 10
+    [ 64, "Speech"          ],  // 11
+    [ 69, "Modal"           ],  // 12
+    [ 75, "Noise"           ],  // 13
+    [ 81, "Vocoder"         ],  // 14 — intro order; displays as #22 on knob
+    [ 87, "Bass"            ],  // 15
+    [ 93, "SawX"            ],  // 16
+    [ 98, "Harm"            ],  // 17
+    [104, "User\nWavetable" ],  // 18
+    [110, "Sample"          ],  // 19
+    [116, "Scan\nGrains"    ],  // 20
+    [122, "Cloud\nGrains"   ],  // 21
+    [127, "Hit\nGrains"     ],  // 22
 ];
 
 const _osc_type = function (v, fw=FW2) {
-    // v is the raw 16-bit primary value of the '#VCODType' section.
-    // Maps linearly to 22 bands: index = round(v × 22 / 32767).
-    // Same marker+layout works for FW1 presets too — they share the section
-    // structure but only the first 12 OSC types are reachable on the knob.
+    // v is the raw 7-bit byte at data[0][14]. Nearest-match against band
+    // centers in OSC_TYPE_TABLE mirrors what MF displays when a stored
+    // byte lies between two band centers.
     if (v == null || isNaN(v)) return "?";
-    const idx = Math.max(1, Math.min(22, Math.round(v * 22 / 32767)));
-    return OSC_TYPE_INTRO_ORDER[idx - 1];
+    let best = OSC_TYPE_TABLE[0], bestDist = Infinity;
+    for (const [center, name] of OSC_TYPE_TABLE) {
+        const d = Math.abs(v - center);
+        if (d < bestDist) { bestDist = d; best = [center, name]; }
+    }
+    return best[1];
 };
 
 // Nearest-match division lookup. `v` is the raw 16-bit value (0..32767) —
@@ -796,21 +794,14 @@ export function decodeParaphonic(data)    { return readSectionParam(data, GEN_SE
 // matrix — gives bipolar signed 16-bit -32768..+32767.
 export function decodeFilterAmt(data)     { return decodeModMatrixFW2(data, MOD_SRC_ENV, FILTER_CUTOFF); }
 
-// OSC Type: anchor on '#VCODType' (note: no leading '@' — this marker is at
-// the very start of the unpacked stream). Layout after the 9-byte marker:
-//   c(0x63) <tag/fmt> <LSB> <MSB>
-// Primary 16-bit value = (MSB<<8) | LSB, maps linearly to the 22 OSC types
-// in firmware-introduction order (see OSC_TYPE_INTRO_ORDER above).
-const OSC_TYPE_MARKER = [0x23,0x56,0x43,0x4f,0x44,0x54,0x79,0x70,0x65]; // '#VCODType'
+// OSC Type: single 7-bit byte at data[0][14]. The #VCODType section is
+// always the first of the unpacked stream, with fixed offset 14 from the
+// start of the packed block. Nearest-match against OSC_TYPE_TABLE band
+// centers. Source: prescan walk on preset 451 (see
+// reverse-engineering/findings.json, osc_type_prescan).
 export function decodeOscType(data) {
-    const unpacked = unpackMidi7bit(data);
-    const m = findUnpackedMarker(unpacked, OSC_TYPE_MARKER);
-    if (m < 0) return null;
-    // marker(9) + c(1) + tag(1) = offset 11 → LSB; 12 → MSB.
-    const lsb = unpacked[m + 11];
-    const msb = unpacked[m + 12];
-    if (lsb === undefined || msb === undefined) return null;
-    return (msb << 8) | lsb;
+    if (!data || !data[0] || data[0].length <= 14) return null;
+    return data[0][14];
 }
 
 export function decodeModMatrixFW2(data, src, dest) {
