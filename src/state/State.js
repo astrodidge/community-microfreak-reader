@@ -115,7 +115,7 @@ class State {
         if (!this.presets.length || !this.presets[this.preset_number]) return null;
         const data = this.presets[this.preset_number].data;
         if (!data || data.length < 1) return null;
-        return oscTypeName(data[0][14], this.fwVersion());
+        return oscTypeName(data, this.fwVersion());
     }
 
     checkPreset(number) {

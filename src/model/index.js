@@ -4,10 +4,11 @@ import oscParamRanges from "./oscParamRanges.json";
 export const FW1 = 0;
 export const FW2 = 1;
 
-// Resolve the current osc type's NAME from the raw byte at data[0][14].
-// Delegates to _osc_type (declared below) to avoid duplicating band boundaries.
-export function oscTypeName(rawByte, fw = FW2) {
-    return _osc_type(rawByte, fw);
+// Resolve the current osc type's NAME from the preset data blocks.
+// Uses marker-anchored read of '#VCODType' primary 16-bit value.
+export function oscTypeName(data, fw = FW2) {
+    const v = decodeOscType(data);
+    return _osc_type(v, fw);
 }
 
 // Look up the per-osc-type info for one of the three OSC knobs.
@@ -121,98 +122,50 @@ const _rangedPow = (max, k, unit) => function (v) {
     return unit ? `${str} ${unit}` : str;
 };
 
+// OSC type names in FIRMWARE-INTRODUCTION order. This is NOT the same as the
+// knob's DISPLAY order on the hardware — Vocoder was added to the firmware
+// at slot 14 (right after Noise), but the MF displays it LAST on the knob as
+// position 22. The primary 16-bit value in the '#VCODType c' section maps
+// linearly to this intro order: raw = index/22 × 32767 (rounded). Derived
+// from the walk on preset 500 (all 22 types captured, see
+// reverse-engineering/findings.json, osc_type_prescan).
+// Harm/SawX intro order: the walk captured both with primary=23831, which is
+// an exact match for intro pos 16. Since primary values are unique per type,
+// the other one (likely SawX) should be at intro pos 17 (target ~25321) —
+// the walk probably missed a save between the two.
+const OSC_TYPE_INTRO_ORDER = [
+    "Basic\nWaves",     //  1  target  1489
+    "Superwave",        //  2        2979
+    "Wavetable",        //  3        4469
+    "Harmo",            //  4        5958
+    "Karplus\nStrong",  //  5        7447
+    "V. Analog",        //  6        8940
+    "Waveshaper",       //  7       10429
+    "Two Op.\nFM",      //  8       11919
+    "Formant",          //  9       13408
+    "Chords",           // 10       14898
+    "Speech",           // 11       16384
+    "Modal",            // 12       17877
+    "Noise",            // 13       19367
+    "Vocoder",          // 14       20852
+    "Bass",             // 15       22341
+    "Harm",             // 16       23831
+    "SawX",             // 17       25321 (inferred; walk missed save)
+    "User\nWavetable",  // 18       26810
+    "Sample",           // 19       28299
+    "Scan\nGrains",     // 20       29788
+    "Cloud\nGrains",    // 21       31278
+    "Hit\nGrains",      // 22       32767
+];
+
 const _osc_type = function (v, fw=FW2) {
-    if (fw === FW2) {
-        // Band boundaries from reverse-engineering preset 448 with all other
-        // parameters zeroed; see reverse-engineering/findings.json (osc_type_prescan).
-        // 22 types, ~6-unit bands. Upper-bound values are the actual observed v.
-        // NOTE: FW2 === 1 (not 2) — the previous `fw === 2` was a latent bug
-        // that made this branch dead code; modern presets were being decoded
-        // by the FW1 fallback below, which is why the old mapping looked wrong.
-        switch (true) {
-            case (v >= 0x00) && (v <= 0x05): return "Basic\nWaves";
-            case (v > 0x05) && (v <= 0x0b): return "Superwave";
-            case (v > 0x0b) && (v <= 0x11): return "Wavetable";
-            case (v > 0x11) && (v <= 0x17): return "Harmo";
-            case (v > 0x17) && (v <= 0x1d): return "Karplus\nStrong";
-            case (v > 0x1d) && (v <= 0x22): return "V. Analog";
-            case (v > 0x22) && (v <= 0x28): return "Waveshaper";
-            case (v > 0x28) && (v <= 0x2e): return "Two Op.\nFM";
-            case (v > 0x2e) && (v <= 0x34): return "Formant";
-            case (v > 0x34) && (v <= 0x3a): return "Chords";
-            case (v > 0x3a) && (v <= 0x40): return "Speech";
-            case (v > 0x40) && (v <= 0x45): return "Modal";
-            case (v > 0x45) && (v <= 0x4b): return "Noise";
-            case (v > 0x4b) && (v <= 0x51): return "Bass";
-            case (v > 0x51) && (v <= 0x57): return "SawX";
-            case (v > 0x57) && (v <= 0x5d): return "Harm";
-            case (v > 0x5d) && (v <= 0x62): return "User\nWavetable";
-            case (v > 0x62) && (v <= 0x68): return "Sample";
-            case (v > 0x68) && (v <= 0x6e): return "Scan\nGrains";
-            case (v > 0x6e) && (v <= 0x74): return "Cloud\nGrains";
-            case (v > 0x74) && (v <= 0x7a): return "Hit\nGrains";
-            case (v > 0x7a) && (v <= 0x7f): return "Vocoder";
-            default: return "?";
-        }
-    } else {
-        switch (true) {
-            case (v >= 0x00) && (v <= 0x0a):
-                return "Basic\nWaves";
-            case (v > 0x0a) && (v <= 0x15):
-                return "Superwave";
-            case (v > 0x15) && (v <= 0x20):
-                return "Wavetable";
-            case (v > 0x20) && (v <= 0x2a):
-                return "Harmonic";
-            case (v > 0x2a) && (v <= 0x35):
-                return "Karplus\nStrong";
-            case (v > 0x35) && (v <= 0x40):
-                return "V. Analog";
-            case (v > 0x40) && (v <= 0x4a):
-                return "Waveshaper";
-            case (v > 0x4a) && (v <= 0x55):
-                return "Two Op.\nFM";
-            case (v > 0x55) && (v <= 0x5f):
-                return "Formant";
-            case (v > 0x5f) && (v <= 0x6a):
-                return "Chords";
-            case (v > 0x6a) && (v <= 0x75):
-                return "Speech";
-            case (v > 0x75) && (v <= 0x7f):
-                return "Modal";
-            default:
-                return "?";
-        }
-    }
-
-    // switch (v) {
-    //     case 10:     0x0a
-    //         return "Basic\nWaves";
-    //     case 21:     0x15
-    //         return "Superwave";
-    //     case 32:     0x20
-    //         return "Wavetable";
-    //     case 42:     0x2a
-    //         return "Harmonic";
-    //     case 53:     0x35
-    //         return "Karplus\nStrong";
-    //     case 64:     0x40
-    //         return "V. Analog";
-    //     case 74:     0x4a
-    //         return "Waveshaper";
-    //     case 85:     0x55
-    //         return "Two Op.\nFM";
-    //     case 95:     0x5f
-    //         return "Formant";
-    //     case 106:    0x6a
-    //         return "Chords";
-    //     case 117:    0x75
-    //         return "Speech";
-    //     case 127:    0x7f
-    //         return "Modal";
-    //     default:
-    //         return "?";
-
+    // v is the raw 16-bit primary value of the '#VCODType' section.
+    // Maps linearly to 22 bands: index = round(v × 22 / 32767).
+    // Same marker+layout works for FW1 presets too — they share the section
+    // structure but only the first 12 OSC types are reachable on the knob.
+    if (v == null || isNaN(v)) return "?";
+    const idx = Math.max(1, Math.min(22, Math.round(v * 22 / 32767)));
+    return OSC_TYPE_INTRO_ORDER[idx - 1];
 };
 
 // Nearest-match division lookup. `v` is the raw 16-bit value (0..32767) —
@@ -843,6 +796,23 @@ export function decodeParaphonic(data)    { return readSectionParam(data, GEN_SE
 // matrix — gives bipolar signed 16-bit -32768..+32767.
 export function decodeFilterAmt(data)     { return decodeModMatrixFW2(data, MOD_SRC_ENV, FILTER_CUTOFF); }
 
+// OSC Type: anchor on '#VCODType' (note: no leading '@' — this marker is at
+// the very start of the unpacked stream). Layout after the 9-byte marker:
+//   c(0x63) <tag/fmt> <LSB> <MSB>
+// Primary 16-bit value = (MSB<<8) | LSB, maps linearly to the 22 OSC types
+// in firmware-introduction order (see OSC_TYPE_INTRO_ORDER above).
+const OSC_TYPE_MARKER = [0x23,0x56,0x43,0x4f,0x44,0x54,0x79,0x70,0x65]; // '#VCODType'
+export function decodeOscType(data) {
+    const unpacked = unpackMidi7bit(data);
+    const m = findUnpackedMarker(unpacked, OSC_TYPE_MARKER);
+    if (m < 0) return null;
+    // marker(9) + c(1) + tag(1) = offset 11 → LSB; 12 → MSB.
+    const lsb = unpacked[m + 11];
+    const msb = unpacked[m + 12];
+    if (lsb === undefined || msb === undefined) return null;
+    return (msb << 8) | lsb;
+}
+
 export function decodeModMatrixFW2(data, src, dest) {
     const s = MOD_MATRIX_FW2_SRC_INDEX.get(src);
     const d = MOD_MATRIX_FW2_DEST_INDEX.get(dest);
@@ -1157,6 +1127,8 @@ export const CONTROL = {
             name: "Glide",
         },
         [OSC_TYPE]: {
+            // Marker-anchored: primary 16-bit value of '#VCODType' section.
+            decoder: decodeOscType,
             MSB: null,
             LSB: [0, 14],
             msb: null,
@@ -1360,6 +1332,8 @@ export const CONTROL = {
             name: "Glide",
         },
         [OSC_TYPE]: {
+            // Marker-anchored: primary 16-bit value of '#VCODType' section.
+            decoder: decodeOscType,
             MSB: null,
             LSB: [0, 14],
             msb: null,
