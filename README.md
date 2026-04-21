@@ -1,4 +1,7 @@
 
+UPDATE: 2026-04-21: working now for all presets on Microfreak with v5!
+
+
 ---
 
 # NOT MAINTAINED ANYMORE
