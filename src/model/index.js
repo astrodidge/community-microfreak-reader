@@ -1,7 +1,45 @@
 import {getRightShift} from "../utils/bits-utils";
+import oscParamRanges from "./oscParamRanges.json";
 
 export const FW1 = 0;
 export const FW2 = 1;
+
+// Resolve the current osc type's NAME from the raw byte at data[0][14].
+// Delegates to _osc_type (declared below) to avoid duplicating band boundaries.
+export function oscTypeName(rawByte, fw = FW2) {
+    return _osc_type(rawByte, fw);
+}
+
+// Look up the per-osc-type info for one of the three OSC knobs.
+// paramKey: 'wave' | 'timbre' | 'shape'.
+// Returns { name, range?: [min,max,unit?], values?: string[] } or null.
+export function oscParamInfo(paramKey, typeName) {
+    if (!typeName) return null;
+    const clean = String(typeName).replace(/\n/g, " ").trim();
+    const entry = oscParamRanges.ranges[clean];
+    if (!entry) return null;
+    return entry[paramKey] || null;
+}
+
+// Compute the display STRING for a knob given its raw 15-bit value,
+// using the per-osc-type range. Returns null if no mapping is available
+// (caller should fall back to the default v.toFixed(1) behavior).
+export function oscParamDisplay(rawValue, paramKey, typeName) {
+    const info = oscParamInfo(paramKey, typeName);
+    if (!info) return null;
+    const t = Math.max(0, Math.min(1, rawValue / 32767));
+    if (Array.isArray(info.values) && info.values.length) {
+        const idx = Math.min(info.values.length - 1, Math.floor(t * info.values.length));
+        return info.values[idx];
+    }
+    if (Array.isArray(info.range) && info.range.length >= 2) {
+        const [min, max, unit] = info.range;
+        const v = min + (max - min) * t;
+        const decimals = (Number.isInteger(min) && Number.isInteger(max) && Math.abs(max - min) >= 20) ? 0 : 1;
+        return v.toFixed(decimals) + (unit ? " " + unit : "");
+    }
+    return null;
+}
 
 export const multibytesValue = (MSB, LSB, msb_byte, mask_msb, sign_byte, mask_sign) => {
 
@@ -40,37 +78,81 @@ export const multibytesValue = (MSB, LSB, msb_byte, mask_msb, sign_byte, mask_si
 
 const _percent = v => `${v.toFixed(0)}%`;
 
-const _osc_type = function (v, fw=2) {
-    if (fw === 2) {
+// Linear display mapping for a knob: takes the scaled % value (0..100) that
+// Control.js passes to mapping() and returns a formatted string using the
+// given min/max/unit. Used for filter/envelope/LFO/cyc-env/glide/etc. —
+// ranges captured from device display via the reverse-engineering walk.
+const _ranged = (min, max, unit) => function (v) {
+    const t = Math.max(0, Math.min(1, v / 100));
+    const out = min + (max - min) * t;
+    const bigIntSpan = Number.isInteger(min) && Number.isInteger(max) && (max - min) >= 20;
+    const str = bigIntSpan ? String(Math.round(out)) : out.toFixed(1);
+    return unit ? `${str} ${unit}` : str;
+};
+
+// Log display mapping: min * (max/min)^t. Use for frequency knobs where the
+// MicroFreak display is perceptually linear (doubling per unit of knob
+// rotation). Requires min > 0.
+const _rangedLog = (min, max, unit) => function (v) {
+    const t = Math.max(0, Math.min(1, v / 100));
+    const out = min * Math.pow(max / min, t);
+    let str;
+    if (out >= 100)      str = out.toFixed(0);
+    else if (out >= 10)  str = out.toFixed(1);
+    else if (out >= 1)   str = out.toFixed(2);
+    else                 str = out.toFixed(3);
+    return unit ? `${str} ${unit}` : str;
+};
+
+// Power-curve display mapping: d = max * t^k (min = 0 implied).
+// Empirically determined k=3 for MicroFreak time knobs (attack/decay/rise/
+// fall/hold/glide) via a 5-point calibration: 50/1200/4600 ms at t=0.171/
+// 0.496/0.777 all fit t^3 within ~2 %.
+const _rangedPow = (max, k, unit) => function (v) {
+    const t = Math.max(0, Math.min(1, v / 100));
+    const out = max * Math.pow(t, k);
+    let str;
+    if (out >= 1000)     str = out.toFixed(0);
+    else if (out >= 100) str = out.toFixed(0);
+    else if (out >= 10)  str = out.toFixed(1);
+    else if (out >= 1)   str = out.toFixed(2);
+    else if (out > 0)    str = out.toFixed(3);
+    else                 str = '0';
+    return unit ? `${str} ${unit}` : str;
+};
+
+const _osc_type = function (v, fw=FW2) {
+    if (fw === FW2) {
+        // Band boundaries from reverse-engineering preset 448 with all other
+        // parameters zeroed; see reverse-engineering/findings.json (osc_type_prescan).
+        // 22 types, ~6-unit bands. Upper-bound values are the actual observed v.
+        // NOTE: FW2 === 1 (not 2) — the previous `fw === 2` was a latent bug
+        // that made this branch dead code; modern presets were being decoded
+        // by the FW1 fallback below, which is why the old mapping looked wrong.
         switch (true) {
-            case (v >= 0x00) && (v <= 0x09):
-                return "Basic\nWaves";
-            case (v > 0x09) && (v <= 0x13):
-                return "Superwave";
-            case (v > 0x13) && (v <= 0x1d):
-                return "Wavetable";
-            case (v > 0x1d) && (v <= 0x27):
-                return "Harmonic";
-            case (v > 0x27) && (v <= 0x31):
-                return "Karplus\nStrong";
-            case (v > 0x31) && (v <= 0x3b):
-                return "V. Analog";
-            case (v > 0x3b) && (v <= 0x44):
-                return "Waveshaper";
-            case (v > 0x44) && (v <= 0x4e):
-                return "Two Op.\nFM";
-            case (v > 0x4e) && (v <= 0x58):
-                return "Formant";
-            case (v > 0x58) && (v <= 0x62):
-                return "Chords";
-            case (v > 0x62) && (v <= 0x6c):
-                return "Speech";
-            case (v > 0x6c) && (v <= 0x76):
-                return "Modal";
-            case (v > 0x76) && (v <= 0x7f):
-                return "Noise";
-            default:
-                return "?";
+            case (v >= 0x00) && (v <= 0x05): return "Basic\nWaves";
+            case (v > 0x05) && (v <= 0x0b): return "Superwave";
+            case (v > 0x0b) && (v <= 0x11): return "Wavetable";
+            case (v > 0x11) && (v <= 0x17): return "Harmo";
+            case (v > 0x17) && (v <= 0x1d): return "Karplus\nStrong";
+            case (v > 0x1d) && (v <= 0x22): return "V. Analog";
+            case (v > 0x22) && (v <= 0x28): return "Waveshaper";
+            case (v > 0x28) && (v <= 0x2e): return "Two Op.\nFM";
+            case (v > 0x2e) && (v <= 0x34): return "Formant";
+            case (v > 0x34) && (v <= 0x3a): return "Chords";
+            case (v > 0x3a) && (v <= 0x40): return "Speech";
+            case (v > 0x40) && (v <= 0x45): return "Modal";
+            case (v > 0x45) && (v <= 0x4b): return "Noise";
+            case (v > 0x4b) && (v <= 0x51): return "Vocoder";
+            case (v > 0x51) && (v <= 0x57): return "Bass";
+            case (v > 0x57) && (v <= 0x5d): return "SawX";
+            case (v > 0x5d) && (v <= 0x62): return "Harm";
+            case (v > 0x62) && (v <= 0x68): return "User\nWavetable";
+            case (v > 0x68) && (v <= 0x6e): return "Sample";
+            case (v > 0x6e) && (v <= 0x74): return "Scan\nGrains";
+            case (v > 0x74) && (v <= 0x7a): return "Cloud\nGrains";
+            case (v > 0x7a) && (v <= 0x7f): return "Hit\nGrains";
+            default: return "?";
         }
     } else {
         switch (true) {
@@ -257,6 +339,7 @@ export const OSC_WAVE = Symbol('OSC_WAVE');
 export const OSC_TIMBRE = Symbol('OSC_TIMBRE');
 export const OSC_SHAPE = Symbol('OSC_SHAPE');
 export const FILTER_CUTOFF = Symbol('FILTER_CUTOFF');
+export const FILTER_AMT = Symbol('FILTER_AMT');
 export const FILTER_RESONANCE = Symbol('FILTER_RESONANCE');
 export const CYCLING_ENV_RISE = Symbol('CYCLING_ENV_RISE');
 export const CYCLING_ENV_RISE_SHAPE = Symbol('CYCLING_ENV_RISE_SHAPE');
@@ -585,6 +668,80 @@ export const MOD_ASSIGN_SLOT = {
     }
 };
 
+// RE-30: FW2 mod-matrix decoder using MIDI 7-bit unpacking.
+//
+// Preset data as stored on disk / received on the wire is 7-bit packed MIDI
+// SysEx: every 8 packed bytes encode 7 data bytes, with the first byte of
+// each group holding the bit-7 values of the following 7 bytes (LSB-first
+// bit-to-byte mapping: flag bit 0 -> bit 7 of byte 1, flag bit 1 -> byte 2,
+// etc.). RE-29 and earlier worked on the still-packed stream at hardcoded
+// byte positions, which only coincidentally decoded correctly when upstream
+// flag bytes happened to be zero - hence the "shifted-left" failures on
+// many presets. After unpacking, the mod matrix is a plain fixed-width grid:
+// a single @#Co1 marker anchors the region, destinations are 45 bytes apart,
+// and each cell is a signed 16-bit little-endian value in the last 2 bytes
+// of an 8-byte source row.
+export function unpackMidi7bit(data) {
+    const flat = [];
+    for (let b = 0; b < data.length; b++) {
+        const block = data[b];
+        for (let i = 0; i < block.length; i++) flat.push(block[i]);
+    }
+    const out = [];
+    for (let i = 0; i < flat.length; i += 8) {
+        const flag = flat[i];
+        const end = Math.min(i + 8, flat.length);
+        for (let k = i + 1; k < end; k++) {
+            const bit = (flag >> (k - i - 1)) & 1;
+            out.push((bit << 7) | flat[k]);
+        }
+    }
+    return out;
+}
+
+const MOD_MATRIX_FW2_SRC_INDEX = new Map([
+    [MOD_SRC_CYC_ENV, 0],
+    [MOD_SRC_ENV, 1],
+    [MOD_SRC_LFO, 2],
+    [MOD_SRC_PRESS, 3],
+    [MOD_SRC_KEY_ARP, 4],
+]);
+
+const MOD_MATRIX_FW2_DEST_INDEX = new Map([
+    [PITCH, 0],
+    [OSC_WAVE, 1],
+    [OSC_TIMBRE, 2],
+    [FILTER_CUTOFF, 3],
+    [ASSIGN1, 4],
+    [ASSIGN2, 5],
+    [ASSIGN3, 6],
+]);
+
+function findCo1Marker(unpacked) {
+    // 40 23 43 6F 31 = '@#Co1'
+    for (let i = 0; i < unpacked.length - 4; i++) {
+        if (unpacked[i] === 0x40 && unpacked[i + 1] === 0x23 &&
+            unpacked[i + 2] === 0x43 && unpacked[i + 3] === 0x6F &&
+            unpacked[i + 4] === 0x31) return i;
+    }
+    return -1;
+}
+
+export function decodeModMatrixFW2(data, src, dest) {
+    const s = MOD_MATRIX_FW2_SRC_INDEX.get(src);
+    const d = MOD_MATRIX_FW2_DEST_INDEX.get(dest);
+    if (s === undefined || d === undefined) return null;
+    const unpacked = unpackMidi7bit(data);
+    const co1 = findCo1Marker(unpacked);
+    if (co1 < 0) return null;
+    const rowStart = co1 + d * 45 + 5 + s * 8;
+    const lsb = unpacked[rowStart + 6];
+    const msb = unpacked[rowStart + 7];
+    if (lsb === undefined || msb === undefined) return null;
+    const u16 = (msb << 8) | lsb;
+    return u16 >= 0x8000 ? u16 - 0x10000 : u16;
+}
+
 // [row, col] for data received when reading preset. Data does not include sysex header, sysex footer, man. id and constant data header
 export const MOD_MATRIX = {
     [FW1]: {
@@ -809,433 +966,67 @@ export const MOD_MATRIX = {
             }
         }
     },
-    [FW2]: {
-        [MOD_SRC_CYC_ENV]: {
-            // [PITCH]: {
-            //     MSB: [22, 15],
-            //     LSB: [22, 14],
-            //     msb: [22, 8, 0x20],
-            //     sign: [22, 8, 0x40]
-            // },
-            [PITCH]: {                  // ok
-                MSB: [23, 5],           // +1 -10
-                LSB: [23, 4],           // +1 -10
-                msb: [23, 0, 0x08],     // +1 -8
-                sign: [23, 0, 0x10]     // +1 -8
-            },
-            // [OSC_WAVE]: {
-            //     MSB: [24, 3],
-            //     LSB: [24, 2],
-            //     msb: [24, 0, 0x02],
-            //     sign: [24, 0, 0x04]
-            // },
-            [OSC_WAVE]: {               // ok
-                MSB: [24, 25],          // +1 +20
-                LSB: [24, 23],          // +1 +19
-                msb: [24, 16, 0x40],    // +1 +16
-                sign: [24, 24, 0x01]    // +1 +24
-            },
-            // [OSC_TIMBRE]: {
-            //     MSB: [25, 22],
-            //     LSB: [25, 21],
-            //     msb: [25, 16, 0x10],
-            //     sign: [25, 16, 0x20]
-            // },
-            [OSC_TIMBRE]: {
-                LSB: [26, 11],
-                MSB: [26, 12],
-                msb: [26, 8, 0x04],
-                sign: [26, 8, 0x08]
-            },
-            // [FILTER_CUTOFF]: {
-            //     MSB: [27, 10],
-            //     LSB: [27, 9],
-            //     msb: [27, 8, 0x01],
-            //     sign: [27, 8, 0x02]
-            // },
-            [FILTER_CUTOFF]: {
-                LSB: [27, 30],
-                MSB: [27, 31],
-                msb: [27, 24, 0x20],
-                sign: [27, 24, 0x40]
-            },
-            // [ASSIGN1]: {
-            //     MSB: [28, 29],
-            //     LSB: [28, 28],
-            //     msb: [28, 24, 0x08],
-            //     sign: [28, 24, 0x10]
-            // },
-            [ASSIGN1]: {
-                LSB: [29, 18],
-                MSB: [29, 19],
-                msb: [29, 16, 0x02],
-                sign: [29, 16, 0x04]
-            },
-            // [ASSIGN2]: {
-            //     MSB: [30, 17],
-            //     LSB: [30, 15],
-            //     msb: [30, 8, 0x40],
-            //     sign: [30, 16, 0x01]
-            // },
-            [ASSIGN2]: {
-                LSB: [31, 5],
-                MSB: [31, 6],
-                msb: [31, 0, 0x10],
-                sign: [31, 0, 0x20]
-            },
-            // [ASSIGN3]: {
-            //     MSB: [32, 4],
-            //     LSB: [32, 3],
-            //     msb: [32, 0, 0x04],
-            //     sign: [32, 0, 0x08]
-            // },
-            [ASSIGN3]: {
-                LSB: [32, 25],
-                MSB: [32, 26],
-                msb: [32, 24, 0x01],
-                sign: [32, 24, 0x02]
-            }
-        },
-        [MOD_SRC_ENV]: {
-            [PITCH]: {
-                LSB: [23, 13],
-                MSB: [23, 14],
-                msb: [23, 8, 0x10],
-                sign: [23, 8, 0x20]
-            },
-            // [OSC_WAVE]: {
-            //     MSB: [24, 12],
-            //     LSB: [24, 11],
-            //     msb: [24, 8, 0x04],
-            //     sign: [24, 8, 0x08]
-            // },
-            [OSC_WAVE]: {
-                LSB: [25, 1],
-                MSB: [25, 2],
-                msb: [25, 8, 0x01],
-                sign: [25, 0, 0x02]
-            },
-            // [OSC_TIMBRE]: {
-            //     MSB: [25, 31],
-            //     LSB: [25, 30],
-            //     msb: [25, 24, 0x20],
-            //     sign: [25, 24, 0x40]
-            // },
-            [OSC_TIMBRE]: {
-                LSB: [26, 20],
-                MSB: [26, 21],
-                msb: [26, 16, 0x08],
-                sign: [26, 16, 0x10]
-            },
-            // [FILTER_CUTOFF]: {
-            //     MSB: [27, 19],
-            //     LSB: [27, 18],
-            //     msb: [27, 16, 0x02],
-            //     sign: [27, 16, 0x04]
-            // },
-            [FILTER_CUTOFF]: {
-                LSB: [28, 7],
-                MSB: [28, 9],
-                msb: [28, 0, 0x40],
-                sign: [28, 8, 0x01]
-            },
-            // [ASSIGN1]: {
-            //     LSB: [29, 5],
-            //     MSB: [29, 6],
-            //     msb: [29, 0, 0x10],
-            //     sign: [29, 0, 0x20]
-            // },
-            [ASSIGN1]: {
-                LSB: [29, 27],
-                MSB: [29, 28],
-                msb: [29, 24, 0x04],
-                sign: [29, 24, 0x08]
-            },
-            // [ASSIGN2]: {
-            //     LSB: [30, 25],
-            //     MSB: [30, 26],
-            //     msb: [30, 24, 0x01],
-            //     sign: [30, 24, 0x02]
-            // },
-            [ASSIGN2]: {
-                LSB: [31, 14],
-                MSB: [31, 15],
-                msb: [31, 8, 0x20],
-                sign: [31, 8, 0x40]
-            },
-            // [ASSIGN3]: {
-            //     LSB: [32, 12],
-            //     MSB: [32, 13],
-            //     msb: [32, 8, 0x08],
-            //     sign: [32, 8, 0x10]
-            // },
-            [ASSIGN3]: {
-                LSB: [33, 2],
-                MSB: [33, 3],
-                msb: [33, 0, 0x02],
-                sign: [33, 0, 0x04]
-            }
-        },
-        [MOD_SRC_LFO]: {
-            // [PITCH]: {
-            //     MSB: [23, 2],
-            //     LSB: [23, 1],
-            //     msb: [23, 0, 0x01],
-            //     sign: [23, 0, 0x02]
-            // },
-            [PITCH]: {
-                MSB: [23, 23],
-                LSB: [23, 22],
-                msb: [23, 16, 0x01],
-                sign: [23, 16, 0x02]
-            },
-            // [OSC_WAVE]: {
-            //     MSB: [24, 21],
-            //     LSB: [24, 20],
-            //     msb: [24, 16, 0x08],
-            //     sign: [24, 16, 0x10]
-            // },
-            [OSC_WAVE]: {
-                LSB: [25, 10],
-                MSB: [25, 11],
-                msb: [25, 8, 0x02],
-                sign: [25, 8, 0x04]
-            },
-            // [OSC_TIMBRE]: {
-            //     MSB: [26, 9],
-            //     LSB: [26, 7],
-            //     msb: [26, 0, 0x40],
-            //     sign: [26, 8, 0x01]
-            // },
-            [OSC_TIMBRE]: {
-                LSB: [26, 29],
-                MSB: [26, 30],
-                msb: [26, 24, 0x10],
-                sign: [26, 24, 0x20]
-            },
-            // [FILTER_CUTOFF]: {
-            //     MSB: [27, 28],
-            //     LSB: [27, 27],
-            //     msb: [27, 24, 0x04],
-            //     sign: [27, 24, 0x08]
-            // },
-            [FILTER_CUTOFF]: {
-                LSB: [28, 17],
-                MSB: [28, 18],
-                msb: [28, 16, 0x01],
-                sign: [28, 16, 0x02]
-            },
-            // [ASSIGN1]: {
-            //     MSB: [29, 15],
-            //     LSB: [29, 14],
-            //     msb: [29, 8, 0x20],
-            //     sign: [29, 8, 0x40]
-            // },
-            [ASSIGN1]: {
-                LSB: [30, 4],
-                MSB: [30, 5],
-                msb: [30, 0, 0x08],
-                sign: [30, 0, 0x10]
-            },
-            // [ASSIGN2]: {
-            //     LSB: [31, 2],
-            //     MSB: [31, 3],
-            //     msb: [31, 0, 0x02],
-            //     sign: [31, 0, 0x04]
-            // },
-            [ASSIGN2]: {
-                LSB: [31, 23],
-                MSB: [31, 25],
-                msb: [31, 16, 0x40],
-                sign: [31, 24, 0x01]
-            },
-            // [ASSIGN3]: {
-            //     LSB: [32, 21],
-            //     MSB: [32, 22],
-            //     msb: [32, 16, 0x10],
-            //     sign: [32, 16, 0x20]
-            // },
-            [ASSIGN3]: {
-                LSB: [33, 11],
-                MSB: [33, 12],
-                msb: [33, 8, 0x04],
-                sign: [33, 8, 0x08]
-            }
-        },
-        [MOD_SRC_PRESS]: {
-            // [PITCH]: {
-            //     MSB: [23, 11],
-            //     LSB: [23, 10],
-            //     msb: [23, 8, 0x02],
-            //     sign: [23, 8, 0x04]
-            // },
-            [PITCH]: {
-                LSB: [23, 31],
-                MSB: [24, 1],
-                msb: [23, 24, 0x40],
-                sign: [24, 0, 0x01]
-            },
-            // [OSC_WAVE]: {
-            //     MSB: [24, 30],
-            //     LSB: [24, 29],
-            //     msb: [24, 24, 0x10],
-            //     sign: [24, 24, 0x20]
-            // },
-            [OSC_WAVE]: {
-                LSB: [25, 19],
-                MSB: [25, 20],
-                msb: [25, 16, 0x04],
-                sign: [25, 16, 0x08]
-            },
-            // [OSC_TIMBRE]: {
-            //     LSB: [26, 17],
-            //     MSB: [26, 18],
-            //     msb: [26, 16, 0x01],
-            //     sign: [26, 16, 0x02]
-            // },
-            [OSC_TIMBRE]: {
-                LSB: [27, 6],
-                MSB: [27, 7],
-                msb: [27, 0, 0x20],
-                sign: [27, 0, 0x40]
-            },
-            // [FILTER_CUTOFF]: {
-            //     LSB: [28, 4],
-            //     MSB: [28, 5],
-            //     msb: [28, 0, 0x08],
-            //     sign: [28, 0, 0x10]
-            // },
-            [FILTER_CUTOFF]: {
-                LSB: [28, 26],
-                MSB: [28, 27],
-                msb: [28, 24, 0x02],
-                sign: [28, 24, 0x04]
-            },
-            // [ASSIGN1]: {
-            //     LSB: [29, 23],
-            //     MSB: [29, 25],
-            //     msb: [29, 16, 0x40],
-            //     sign: [29, 24, 0x01]
-            // },
-            [ASSIGN1]: {
-                LSB: [30, 13],
-                MSB: [30, 14],
-                msb: [30, 8, 0x10],
-                sign: [30, 8, 0x20]
-            },
-            // [ASSIGN2]: {
-            //     LSB: [31, 11],
-            //     MSB: [31, 12],
-            //     msb: [31, 8, 0x04],
-            //     sign: [31, 8, 0x08]
-            // },
-            [ASSIGN2]: {
-                LSB: [32, 1],
-                MSB: [32, 2],
-                msb: [32, 0, 0x01],
-                sign: [32, 0, 0x02]
-            },
-            // [ASSIGN3]: {
-            //     LSB: [32, 30],
-            //     MSB: [32, 31],
-            //     msb: [32, 24, 0x20],
-            //     sign: [32, 24, 0x40]
-            // },
-            [ASSIGN3]: {
-                LSB: [33, 20],
-                MSB: [33, 21],
-                msb: [33, 16, 0x08],
-                sign: [33, 16, 0x10]
-            }
-        },
-        [MOD_SRC_KEY_ARP]: {
-            // [PITCH]: {
-            //     LSB: [23, 19],
-            //     MSB: [23, 20],
-            //     msb: [23, 16, 0x04],
-            //     sign: [23, 16, 0x08]
-            // },
-            [PITCH]: {
-                LSB: [24, 9],
-                MSB: [24, 10],
-                msb: [24, 8, 0x01],
-                sign: [24, 8, 0x02]
-            },
-            // [OSC_WAVE]: {
-            //     LSB: [25, 6],
-            //     MSB: [25, 7],
-            //     msb: [25, 0, 0x20],
-            //     sign: [25, 0, 0x40]
-            // },
-            [OSC_WAVE]: {
-                LSB: [25, 28],
-                MSB: [25, 29],
-                msb: [25, 24, 0x08],
-                sign: [25, 24, 0x10]
-            },
-            // [OSC_TIMBRE]: {
-            //     LSB: [26, 26],
-            //     MSB: [26, 27],
-            //     msb: [26, 24, 0x02],
-            //     sign: [26, 24, 0x04]
-            // },
-            [OSC_TIMBRE]: {
-                LSB: [27, 15],
-                MSB: [27, 17],
-                msb: [27, 8, 0x40],
-                sign: [27, 24, 0x01]
-            },
-            // [FILTER_CUTOFF]: {
-            //     LSB: [28, 13],
-            //     MSB: [28, 14],
-            //     msb: [28, 8, 0x10],
-            //     sign: [28, 8, 0x20]
-            // },
-            [FILTER_CUTOFF]: {
-                LSB: [29, 3],
-                MSB: [29, 4],
-                msb: [29, 0, 0x04],
-                sign: [29, 0, 0x08]
-            },
-            // [ASSIGN1]: {
-            //     LSB: [30, 1],
-            //     MSB: [30, 2],
-            //     msb: [30, 0, 0x01],
-            //     sign: [30, 0, 0x02]
-            // },
-            [ASSIGN1]: {
-                LSB: [30, 22],
-                MSB: [30, 23],
-                msb: [30, 16, 0x20],
-                sign: [30, 16, 0x40]
-            },
-            // [ASSIGN2]: {
-            //     LSB: [31, 20],
-            //     MSB: [31, 21],
-            //     msb: [31, 16, 0x08],
-            //     sign: [31, 16, 0x10]
-            // },
-            [ASSIGN2]: {
-                LSB: [32, 10],
-                MSB: [32, 11],
-                msb: [32, 8, 0x02],
-                sign: [32, 8, 0x04]
-            },
-            // [ASSIGN3]: {
-            //     LSB: [33, 7],
-            //     MSB: [33, 9],
-            //     msb: [33, 0, 0x40],
-            //     sign: [33, 8, 0x01]
-            // },
-            [ASSIGN3]: {
-                LSB: [33, 29],
-                MSB: [33, 30],
-                msb: [33, 24, 0x10],
-                sign: [33, 24, 0x20]
+    [FW2]: (() => {
+        // RE-29: Full FW2 mod-matrix generator based on empirically-verified
+        // pattern (user preset #449). Anchors are the 7 Env-row cells
+        // (empirically confirmed), then per-source shifts:
+        //   - LSB byte stride: +9 if previous source was classic, +10 if split
+        //   - flag byte stride: +8 classic, +16 split (split cells use 2 flag slots)
+        //   - msb bit position cycles (env_msb_bit + S - 1) mod 7
+        //   - When msb bit would land on 6, cell is "split": sign moves to a
+        //     wedge byte between LSB and MSB (at LSB+1 bit 0); MSB at LSB+2.
+        // Known-cell verification: all 12 empirically-probed cells match
+        // this generator exactly. Remaining 23 cells are extrapolated.
+        const ENV_ANCHORS = [
+            [PITCH,         27*32+14, 27*32+8,  5],
+            [OSC_WAVE,      29*32+2,  29*32+0,  1],
+            [OSC_TIMBRE,    30*32+21, 30*32+16, 4],
+            [FILTER_CUTOFF, 32*32+9,  32*32+8,  0],
+            [ASSIGN1,       33*32+28, 33*32+24, 3],
+            [ASSIGN2,       35*32+15, 35*32+8,  6],
+            [ASSIGN3,       37*32+3,  37*32+0,  2],
+        ];
+        const SOURCES = [MOD_SRC_CYC_ENV, MOD_SRC_ENV, MOD_SRC_LFO, MOD_SRC_PRESS, MOD_SRC_KEY_ARP];
+        const toBB = (lin) => [Math.floor(lin / 32), lin % 32];
+        const result = {};
+        SOURCES.forEach((s) => { result[s] = {}; });
+        for (const [destSym, envLsbLin, envFlagLin, envMsbBit] of ENV_ANCHORS) {
+            const bits = SOURCES.map((_, s) => ((envMsbBit + s - 1) % 7 + 7) % 7);
+            const splits = bits.map((b) => b === 6);
+            const lsbLins = new Array(5);
+            lsbLins[1] = envLsbLin;
+            lsbLins[0] = envLsbLin - (splits[0] ? 10 : 9);
+            for (let s = 2; s < 5; s++) lsbLins[s] = lsbLins[s-1] + (splits[s-1] ? 10 : 9);
+            const flagLins = new Array(5);
+            flagLins[1] = envFlagLin;
+            flagLins[0] = envFlagLin - (splits[0] ? 16 : 8);
+            for (let s = 2; s < 5; s++) flagLins[s] = flagLins[s-1] + (splits[s-1] ? 16 : 8);
+            for (let s = 0; s < 5; s++) {
+                const msbBit = bits[s];
+                const split = splits[s];
+                const lsbL = lsbLins[s];
+                const flagL = flagLins[s];
+                if (split) {
+                    result[SOURCES[s]][destSym] = {
+                        LSB:  toBB(lsbL),
+                        MSB:  toBB(lsbL + 2),
+                        msb:  [...toBB(flagL), 0x40],
+                        sign: [...toBB(lsbL + 1), 0x01],
+                    };
+                } else {
+                    result[SOURCES[s]][destSym] = {
+                        LSB:  toBB(lsbL),
+                        MSB:  toBB(lsbL + 1),
+                        msb:  [...toBB(flagL), 1 << msbBit],
+                        sign: [...toBB(flagL), 1 << (msbBit + 1)],
+                    };
+                }
             }
         }
-    }
+        return result;
+    })()
 };
+
 
 // if mod_group is defined, that means that the control can be a modulation destination
 export const CONTROL = {
@@ -1457,14 +1248,13 @@ export const CONTROL = {
     },
     [FW2]: {
         [GLIDE]: {
-            MSB: [6, 23],
-            LSB: [6, 22],
-            //sign: [0, 0, 0x02],
-            msb: [6, 16, 0x20],
+            // RE walk: positions + cubic ms curve 0..10 s.
+            LSB: [7, 3],
+            MSB: [7, 4],
+            msb: [7, 0, 0x04],
             cc: 5,
-            mapping: null,
+            mapping: _rangedPow(10000, 3, "ms"),
             name: "Glide",
-            // group: MOD_GROUP_
         },
         [OSC_TYPE]: {
             MSB: null,
@@ -1505,93 +1295,114 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [FILTER_CUTOFF]: {
-            MSB: [2, 30],
-            LSB: [2, 29],
-            //sign: [0, 0, 0x02],
-            msb: [2, 24, 0x10],
+            // RE walk: positions + log Hz range (16..26900). Log because
+            // cutoff is perceptually linear (octaves per knob turn).
+            LSB: [3, 10],
+            MSB: [3, 11],
+            msb: [3, 8, 0x02],
             cc: 23,
-            mapping: null,
+            mapping: _rangedLog(16, 26900, "Hz"),
             name: 'Cutoff',
             mod_group: MOD_GROUP_FILTER
         },
         [FILTER_RESONANCE]: {
-            MSB: [3, 9],
-            LSB: [3, 7],
-            //sign: [0, 0, 0x02],
-            msb: [3, 0, 0x40],
+            // RE walk: positions + 0..100%
+            LSB: [3, 20],
+            MSB: [3, 21],
+            msb: [3, 16, 0x08],
             cc: 83,
-            mapping: _percent,
+            mapping: _ranged(0, 100, "%"),
             name: 'Resonance',
             mod_group: MOD_GROUP_FILTER
         },
+        [FILTER_AMT]: {
+            // RE walk: bipolar -100..+100. Byte [32][10] is the primary (0..0x7F)
+            // with center ~0x40 = 0%. [32][8] and [32][9] carry sign/precision
+            // that we decode specially in Control.js (raw={true} path).
+            MSB: null,
+            LSB: [32, 10],
+            msb: null,
+            cc: 0,
+            mapping: null,
+            name: 'Filter Amt',
+            mod_group: MOD_GROUP_FILTER
+        },
         [CYCLING_ENV_RISE]: {
-            MSB: [4, 6],
-            LSB: [4, 5],
-            //sign: [0, 0, 0x02],
-            msb: [4, 0, 0x10],
+            LSB: [4, 18],
+            MSB: [4, 19],
+            msb: [4, 16, 0x02],
             cc: 102,
-            mapping: null,  //_0_100,
+            mapping: _rangedPow(10000, 3, "ms"),
             name: 'Rise',
             mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_FALL]: {
-            MSB: [5, 2],
-            LSB: [5, 1],
-            //sign: [0, 0, 0x02],
-            msb: [5, 0, 0x01],
+            LSB: [5, 13],
+            MSB: [5, 14],
+            msb: [5, 8, 0x10],
             cc: 103,
-            mapping: null,
+            mapping: _rangedPow(10000, 3, "ms"),
             name: 'Fall',
             mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_HOLD]: {
-            MSB: [5, 12],
-            LSB: [5, 11],
-            //sign: [0, 0, 0x02],
-            msb: [5, 8, 0x04],
+            // LSB/MSB non-adjacent. Unlike rise/fall (ms), HOLD is linear %.
+            LSB: [5, 23],
+            MSB: [5, 25],
+            msb: [5, 16, 0x40],
             cc: 28,
-            mapping: null,
+            mapping: _ranged(0, 100, "%"),
             name: 'Hold',
             mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_AMOUNT]: {
-            MSB: [6, 6],
-            LSB: [6, 5],
-            //sign: [0, 0, 0x02],
-            msb: [6, 0, 0x10],
+            // RE walk: positions + 0..100%
+            LSB: [6, 18],
+            MSB: [6, 19],
+            msb: [6, 16, 0x02],
             cc: 24,
-            mapping: _percent,
+            mapping: _ranged(0, 100, "%"),
             name: 'Amount',
             mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_RISE_SHAPE]: {
-            MSB: [4, 20],
-            LSB: [4, 19],
-            msb: [4, 16, 0x04],
+            // RE walk: positions + 0..100% (LSB/MSB span block boundary)
+            LSB: [4, 31],
+            MSB: [5, 1],
+            msb: [4, 24, 0x40],
             cc: 24,
-            mapping: null,
+            mapping: _ranged(0, 100, "%"),
             name: 'Rise shape'
         },
         [CYCLING_ENV_FALL_SHAPE]: {
-            MSB: [5, 26],
-            LSB: [5, 25],
-            msb: [5, 24, 0x01],
+            // RE walk: positions + 0..100%
+            LSB: [6, 5],
+            MSB: [6, 6],
+            msb: [6, 0, 0x10],
             cc: 24,
-            mapping: null,
+            mapping: _ranged(0, 100, "%"),
             name: 'Fall shape'
         },
         [ARP_SEQ_RATE_FREE]: {
-            LSB: [10, 26],
-            MSB: [10, 27],
-            msb: [10, 24, 0x02],
+            // RE walk (sync OFF): positions confirmed. Linear BPM 30..240.
+            // Note: encoder saturates the stored byte at raw = 31500 (= 0x7B00 + 0x0C)
+            // which is ~96.1% of full 15-bit scale, NOT 32767. Scaling factor
+            // 210/96.13 = 2.1845 converts the controlValue-scaled v (0..100) to BPM.
+            LSB: [11, 6],
+            MSB: [11, 7],
+            msb: [11, 0, 0x01],
             cc: 91,
-            mapping: null,
+            mapping: function (v) {
+                const t = Math.max(0, Math.min(1, v / 96.13));
+                return Math.round(30 + 210 * t) + " BPM";
+            },
             name: 'Rate free'
         },
         [ARP_SEQ_RATE_SYNC]: {
-            LSB: [10, 15],
-            MSB: [10, 17],
-            msb: [10, 8, 0x40],
+            // RE walk (sync ON): positions updated for FW2. Division mapping unchanged.
+            LSB: [10, 28],
+            MSB: [10, 29],
+            msb: [10, 24, 0x08],
             cc: 92,
             mapping: _arp_rate_sync,
             name: 'Rate sync'
@@ -1605,46 +1416,50 @@ export const CONTROL = {
             name: 'Swing'
         },
         [LFO_RATE_FREE]: {
-            LSB: [13, 30],
-            MSB: [13, 31],
-            msb: [13, 24, 0x20],
+            // RE walk (sync OFF): positions + log Hz range (0.06 .. 100 Hz).
+            LSB: [14, 11],
+            MSB: [14, 12],
+            msb: [14, 8, 0x04],
             cc: 93,
-            mapping: null,
+            mapping: _rangedLog(0.06, 100, "Hz"),
             name: 'Rate free'
         },
         [LFO_RATE_SYNC]: {
-            LSB: [13, 20],
-            MSB: [13, 21],
-            msb: [13, 16, 0x08],
+            // RE walk (sync ON): positions updated for FW2. Division mapping
+            // stays as the existing _lfo_rate_sync (13 values 8/1..1/32).
+            LSB: [14, 1],
+            MSB: [14, 2],
+            msb: [14, 0, 0x01],
             cc: 94,
             mapping: _lfo_rate_sync,
             name: 'Rate sync'
         },
         [ENVELOPE_ATTACK]: {
-            LSB: [15, 18],
-            MSB: [15, 19],
-            msb: [15, 16, 0x02],
+            LSB: [15, 30],
+            MSB: [15, 31],
+            msb: [15, 24, 0x20],
             cc: 105,
-            mapping: null,
+            mapping: _rangedPow(10000, 3, "ms"),
             name: 'Attack',
             mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_DECAY]: {
-            LSB: [15, 30],
-            MSB: [15, 31],
-            //sign: [0, 0, 0x02],
-            msb: [15, 24, 0x20],
+            // ms range up to 25 s
+            LSB: [16, 11],
+            MSB: [16, 12],
+            msb: [16, 8, 0x04],
             cc: 106,
-            mapping: null,
+            mapping: _rangedPow(25000, 3, "ms"),
             name: 'Decay/Rel',
             mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_SUSTAIN]: {
-            LSB: [16, 12],
-            MSB: [16, 13],
-            msb: [16, 8, 0x08],
+            // RE walk: positions + 0..100%
+            LSB: [16, 25],
+            MSB: [16, 26],
+            msb: [16, 24, 0x01],
             cc: 29,
-            mapping: _percent,
+            mapping: _ranged(0, 100, "%"),
             name: 'Sustain',
             mod_group: MOD_GROUP_ENVELOPE
         },
@@ -1808,14 +1623,17 @@ export const SWITCH = {
         }
     },
     [FW2]: {
-        [FILTER_TYPE]: {        // fw1, fw2
-            MSB: [2, 18],
-            LSB: [2, 17],
-            msb: [2, 16, 0x01],
+        [FILTER_TYPE]: {
+            // RE prescan: positions corrected; values[] same as pre-existing model
+            // (which had the right raw assignments all along; only the positions
+            // were outdated for FW2).
+            LSB: [2, 29],
+            MSB: [2, 30],
+            msb: [2, 24, 0x10],
             values: [
-                {name: 'LPF', value: 0},
+                {name: 'LPF', value: 0x0000},
                 {name: 'BPF', value: 0x4000},
-                {name: 'HPF', value: 0x7fff}
+                {name: 'HPF', value: 0x7FFF}
             ],
             name: "Filter type"
         },
@@ -1830,23 +1648,25 @@ export const SWITCH = {
         //     name: "Amp mod"
         // },
         [AMP_MOD]: {
-            LSB: [15, 5],
-            MSB: [15, 6],
-            msb: [15, 0, 0x10],
+            // RE prescan: positions updated for FW2.
+            LSB: [15, 18],
+            MSB: [15, 19],
+            msb: [15, 16, 0x02],
             values: [
-                {name: 'Off', value: 0},
-                {name: 'On', value: 0x7fff}
+                {name: 'Off', value: 0x0000},
+                {name: 'On',  value: 0x7FFF}
             ],
             name: "Amp mod"
         },
         [CYCLING_ENV_MODE]: {
-            MSB: [3, 25],       // fw1, fw2
-            LSB: [3, 23],
-            msb: [3, 16, 0x40],
+            // RE prescan: positions updated for FW2; values same as pre-existing model.
+            LSB: [4, 4],
+            MSB: [4, 5],
+            msb: [4, 0, 0x08],
             values: [
-                {name: 'Env', value: 0},
+                {name: 'Env', value: 0x0000},
                 {name: 'Run', value: 0x4000},
-                {name: 'Loop', value: 0x7fff}
+                {name: 'Loop', value: 0x7FFF}
             ],
             name: "Mode"
         },
@@ -1866,37 +1686,47 @@ export const SWITCH = {
         //     mod_group: MOD_GROUP_LFO
         // },
         [LFO_SHAPE]: {
-            LSB: [13, 11],
-            MSB: [13, 12],
-            msb: [13, 8, 0x04],
+            // RE prescan: positions correct. Raw encoding formula is
+            //   (MSB << 8) + (msb_bit << 7) + LSB
+            // giving evenly-spaced values at 0x1999 increments in cycle order.
+            // values[] is in HARDWARE display order (2-col grid, row-major):
+            //   Sine Sqr
+            //   Tri  SnH
+            //   Saw  SnHF
+            // switchValue() uses nearest-match so display order is free.
+            LSB: [13, 23],
+            MSB: [13, 25],
+            msb: [13, 16, 0x40],
             values: [
-                {name: 'Sine', value: 0},
-                {name: 'Tri', value: 0x1999},
-                {name: 'Saw', value: 0x3333},
-                {name: 'Sqa', value: 0x4ccc},
-                {name: 'SnH', value: 0x6666},
-                {name: 'SnHF', value: 0x7fff}
+                {name: 'Sine', value: 0x0000},   // 0
+                {name: 'Sqr',  value: 0x4CCC},   // 19660
+                {name: 'Tri',  value: 0x1999},   // 6553
+                {name: 'SnH',  value: 0x6666},   // 26214
+                {name: 'Saw',  value: 0x3333},   // 13107
+                {name: 'SnHF', value: 0x7FFF}    // 32767
             ],
             name: "Shape",
             mod_group: MOD_GROUP_LFO
         },
         [ARP]: {
-            MSB: [9, 6],
-            LSB: [9, 5],
-            msb: [9, 0, 0x10],
+            // RE prescan: positions updated for FW2.
+            LSB: [10, 7],
+            MSB: [10, 9],
+            msb: [10, 0, 0x40],
             values: [
-                {name: 'Off', value: 0},
-                {name: 'On', value: 0x7fff}
+                {name: 'Off', value: 0x0000},
+                {name: 'On',  value: 0x7FFF}
             ],
             name: "Arp"
         },
         [SEQ]: {
-            MSB: [12, 5],
-            LSB: [12, 4],
-            msb: [12, 0, 0x08],
+            // RE prescan: positions updated for FW2.
+            LSB: [13, 6],
+            MSB: [13, 7],
+            msb: [13, 0, 0x20],
             values: [
-                {name: 'Off', value: 0},
-                {name: 'On', value: 0x7fff}
+                {name: 'Off', value: 0x0000},
+                {name: 'On',  value: 0x7FFF}
             ],
             name: "Seq"
         },
@@ -1913,80 +1743,66 @@ export const SWITCH = {
         //     name: "Mod"
         // },
         [ARP_SEQ_MOD]: {
-            LSB: [9, 27],
-            MSB: [9, 28],
-            msb: [9, 24, 0x04],
+            // RE prescan: positions updated for FW2. Values are 4 evenly-spaced
+            // at 0x2AAA intervals (old "1" value 17408 was 0x4400 — wrong).
+            LSB: [10, 19],
+            MSB: [10, 20],
+            msb: [10, 16, 0x04],
             values: [
-                {name: '1', value: 17408},
-                {name: '2', value: 10922},
-                {name: '3', value: 21845},
-                {name: '4', value: 0x7fff}
+                {name: '1', value: 0x0000},
+                {name: '2', value: 0x2AAA},
+                {name: '3', value: 0x5555},
+                {name: '4', value: 0x7FFF}
             ],
             name: "Mod"
         },
-        [ARP_SEQ_SYNC]: {   //TODO
-            LSB: [10, 6],
-            MSB: [10, 7],
-            msb: [10, 0, 0x20],
+        [ARP_SEQ_SYNC]: {
+            // RE walk: positions updated for FW2.
+            LSB: [11, 28],
+            MSB: [11, 29],
+            msb: [11, 24, 0x08],
             values: [
-                {name: 'Off', value: 0},
-                {name: 'On', value: 0x7fff}
+                {name: 'Off', value: 0x0000},
+                {name: 'On',  value: 0x7FFF}
             ],
             name: "Sync"
         },
-        // [LFO_SYNC]: {
-        //     MSB: [13, 20],
-        //     LSB: [13, 19],
-        //     msb: [13, 16, 0x04],
-        //     values: [
-        //         {name: 'Off', value: 0},
-        //         {name: 'On', value: 0x7fff}
-        //     ],
-        //     name: "Sync"
-        // },
         [LFO_SYNC]: {
-            LSB: [14, 9],
-            MSB: [14, 10],
-            msb: [14, 8, 0x01],
+            // RE walk: positions updated for FW2.
+            LSB: [14, 21],
+            MSB: [14, 22],
+            msb: [14, 16, 0x10],
             values: [
-                {name: 'Off', value: 0},
-                {name: 'On', value: 0x7fff}
+                {name: 'Off', value: 0x0000},
+                {name: 'On',  value: 0x7FFF}
             ],
             name: "Sync"
         },
         [PARAPHONIC]: {
-            MSB: [16, 23],
-            LSB: [16, 22],
-            msb: [16, 16, 0x20],
+            // RE walk: positions updated for FW2. Removed duplicate entry.
+            LSB: [18, 3],
+            MSB: [18, 4],
+            msb: [18, 0, 0x04],
             values: [
-                {name: 'Off', value: 0},
-                {name: 'On', value: 0x7fff}
+                {name: 'Off', value: 0x0000},
+                {name: 'On',  value: 0x7FFF}
             ],
             name: "Paraphonic"
         },
-        [PARAPHONIC]: {
-            LSB: [17, 12],
-            MSB: [17, 13],
-            msb: [17, 8, 0x08],
+        [OCTAVE]: {
+            // RE prescan: positions updated for FW2; values already correct
+            // (7 evenly-spaced at 0x1555 intervals).
+            LSB: [7, 15],
+            MSB: [7, 17],
+            msb: [7, 8, 0x40],
             values: [
-                {name: 'Off', value: 0},
-                {name: 'On', value: 0x7fff}
-            ],
-            name: "Paraphonic"
-        },
-        [OCTAVE]: {         // fw1, fw2
-            MSB: [7, 4],
-            LSB: [7, 3],
-            msb: [7, 0, 0x04],
-            // mapping: _octave,
-            values: [
-                {name: '-3', value: 0},
+                {name: '-3', value: 0x0000},
                 {name: '-2', value: 0x1555},
-                {name: '-1', value: 0x2aaa},
-                {name: '0', value: 0x4000},
+                {name: '-1', value: 0x2AAA},
+                {name: '0',  value: 0x4000},
                 {name: '+1', value: 0x5555},
-                {name: '+2', value: 0x6aaa},
-                {name: '+3', value: 0x7fff}
+                {name: '+2', value: 0x6AAA},
+                {name: '+3', value: 0x7FFF}
             ],
             name: "Octave"
         },

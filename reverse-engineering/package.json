@@ -1,0 +1,16 @@
+{
+  "name": "microfreak-reverse-engineering",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive tool to reverse-engineer MicroFreak sysex byte positions by capturing before/after snapshots as the user tweaks knobs.",
+  "main": "rev.js",
+  "scripts": {
+    "walk": "node rev.js walk",
+    "list-ports": "node rev.js list-ports",
+    "snap": "node rev.js snap",
+    "diff": "node rev.js diff"
+  },
+  "dependencies": {
+    "@julusian/midi": "^3.6.1"
+  }
+}

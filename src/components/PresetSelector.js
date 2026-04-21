@@ -144,8 +144,15 @@ class PresetSelector extends Component {
         if (global.dev) console.log("load data", e.target.value);
         if (e.target.value) {
             let response = await fetch("data/" + e.target.value);
-            this.props.state.presets = await response.json();
-            this.props.state.checkAllPresets();
+            const data = await response.json();
+            if (data && Array.isArray(data)) {
+                this.props.state.presets = new Array(512).fill(null);
+                const maxLength = Math.min(data.length, 512);
+                for (let i = 0; i < maxLength; i++) {
+                    this.props.state.presets[i] = data[i];
+                }
+                this.props.state.checkAllPresets();
+            }
         }
     };
 

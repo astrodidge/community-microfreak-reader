@@ -69,39 +69,48 @@ class List extends Component {
         const n = e.target.value;
         if (global.dev) console.log("load data", n);
         if (n) {
-            // this.setState({pack: e.target.value});
             let response = await fetch("data/" + n);
-            state.presets = await response.json();
-            // state.filename = n;
-            state.checkAllPresets();
-            this.setState({pack: n, filename: PACKS[n]});
+            const data = await response.json();
+            if (data && Array.isArray(data)) {
+                state.presets = new Array(512).fill(null);
+                const maxLength = Math.min(data.length, 512);
+                for (let i = 0; i < maxLength; i++) {
+                    state.presets[i] = data[i];
+                }
+                state.checkAllPresets();
+                this.setState({pack: n, filename: PACKS[n]});
+            }
         }
     };
 
 onFileSelection = async e => {
         if (global.dev) console.log("onFileSelection");
-        
+
         // Check if a file was actually selected (user didn't cancel)
         if (!e.target.files || e.target.files.length === 0) {
             if (global.dev) console.log("No file selected (user cancelled)");
             return;
         }
-        
+
         const f = e.target.files[0];
         const data = await readFile(f);
-        
-        if (data) {
-            state.presets = data;
-            state.checkAllPresets(); // Important: check presets after loading
+
+        if (data && Array.isArray(data)) {
+            state.presets = new Array(512).fill(null);
+            const maxLength = Math.min(data.length, 512);
+            for (let i = 0; i < maxLength; i++) {
+                state.presets[i] = data[i];
+            }
+            state.checkAllPresets();
             this.setState({pack: "", filename: f.name});
         } else {
-			console.error("Failed to load file:", f && f.name ? f.name : "unknown");        }
-        
+            console.error("Failed to load file:", f && f.name ? f.name : "unknown");
+        }
+
         // Reset the file input so the same file can be selected again if needed
-       // Check if target still exists before trying to reset it
-if (e.target && e.target.value !== undefined) {
-    e.target.value = '';
-}
+        if (e.target && e.target.value !== undefined) {
+            e.target.value = '';
+        }
     };
 
     importFromFile = () => {

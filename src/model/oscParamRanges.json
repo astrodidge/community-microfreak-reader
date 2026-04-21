@@ -1,0 +1,26 @@
+{
+  "ranges": {
+    "Basic Waves":     { "wave": { "name": "Morph",     "range": [0, 100] }, "timbre": { "name": "Sym",       "range": [50, 95] }, "shape": { "name": "Sub",       "range": [0, 100] } },
+    "Superwave":       { "wave": { "name": "Wave-Type", "range": [0, 100] }, "timbre": { "name": "DeTune",    "range": [0, 100] }, "shape": { "name": "Volume",    "range": [0, 100] } },
+    "Wavetable":       { "wave": { "name": "Table",     "range": [0, 10]  }, "timbre": { "name": "Position",  "range": [0, 100] }, "shape": { "name": "Chorus",    "range": [0, 100] } },
+    "Harmo":           { "wave": { "name": "Content",   "range": [0, 100] }, "timbre": { "name": "Sculpting", "range": [0, 100] }, "shape": { "name": "Chorus",    "range": [0, 100] } },
+    "Karplus Strong":  { "wave": { "name": "Bow",       "range": [0, 100] }, "timbre": { "name": "Position",  "range": [0, 100] }, "shape": { "name": "Decay",     "range": [0, 100] } },
+    "V. Analog":       { "wave": { "name": "DeTune",    "range": [0, 100] }, "timbre": { "name": "Shape",     "range": [0, 100] }, "shape": { "name": "Wave",      "range": [0, 100] } },
+    "Waveshaper":      { "wave": { "name": "Wave",      "range": [0, 100] }, "timbre": { "name": "Amount",    "range": [0, 100] }, "shape": { "name": "Asym",      "range": [0, 100] } },
+    "Two Op. FM":      { "wave": { "name": "Ratio",     "range": [0, 100] }, "timbre": { "name": "Amount",    "range": [0, 100] }, "shape": { "name": "Feedback",  "range": [0, 100] } },
+    "Formant":         { "wave": { "name": "Interval",  "range": [0, 100] }, "timbre": { "name": "Formant",   "range": [0, 100] }, "shape": { "name": "Shape",     "range": [0, 100] } },
+    "Chords":          { "wave": { "name": "ChordType", "range": [0, 100] }, "timbre": { "name": "Inv-Trsp",  "range": [0, 100] }, "shape": { "name": "Waveform",  "range": [0, 100] } },
+    "Speech":          { "wave": { "name": "Type",      "range": [0, 100] }, "timbre": { "name": "Timbre",    "range": [0, 100] }, "shape": { "name": "Word",      "range": [0, 100] } },
+    "Modal":           { "wave": { "name": "InHarm",    "range": [0, 100] }, "timbre": { "name": "Timbre",    "range": [0, 100] }, "shape": { "name": "Decay",     "range": [0, 100] } },
+    "Noise":           { "wave": { "name": "Type",      "range": [0, 100] }, "timbre": { "name": "Rate",      "range": [0, 100] }, "shape": { "name": "Balance",   "range": [0, 100] } },
+    "Vocoder":         { "wave": { "name": "Wave",      "range": [0, 100] }, "timbre": { "name": "Shift",     "range": [0, 100] }, "shape": { "name": "Bandwith",  "range": [0, 100] } },
+    "Bass":            { "wave": { "name": "Saturate",  "range": [0, 100] }, "timbre": { "name": "Fold",      "range": [0, 100] }, "shape": { "name": "Noise",     "range": [0, 100] } },
+    "SawX":            { "wave": { "name": "SawMode",   "range": [0, 100] }, "timbre": { "name": "Shape",     "range": [0, 100] }, "shape": { "name": "Noise",     "range": [0, 100] } },
+    "Harm":            { "wave": { "name": "Spread",    "range": [0, 100] }, "timbre": { "name": "Rectify",   "range": [0, 100] }, "shape": { "name": "Noise",     "range": [0, 100] } },
+    "User Wavetable":  { "wave": { "name": "Table",     "range": [0, 10]  }, "timbre": { "name": "Position",  "range": [0, 100] }, "shape": { "name": "BitDepth",  "range": [0, 100] } },
+    "Sample":          { "wave": { "name": "Start",     "range": [0, 100] }, "timbre": { "name": "Length",    "range": [0, 100] }, "shape": { "name": "Loop",      "range": [0, 100] } },
+    "Scan Grains":     { "wave": { "name": "Start",     "range": [0, 100] }, "timbre": { "name": "Density",   "range": [0, 100] }, "shape": { "name": "Chaos",     "range": [0, 100] } },
+    "Cloud Grains":    { "wave": { "name": "Start",     "range": [0, 100] }, "timbre": { "name": "Density",   "range": [0, 100] }, "shape": { "name": "Chaos",     "range": [0, 100] } },
+    "Hit Grains":      { "wave": { "name": "Start",     "range": [0, 100] }, "timbre": { "name": "Density",   "range": [0, 100] }, "shape": { "name": "Shape",     "range": [0, 100] } }
+  }
+}

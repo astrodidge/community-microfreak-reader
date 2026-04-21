@@ -55,16 +55,11 @@ class ModMatrix extends Component {
 
         const S = this.props.state;
 
-        let supported_format = true;
-        if (S.presets && S.presets.length && S.presets[S.preset_number]) {
-            if (S.presets[S.preset_number].hasOwnProperty("supported")) {
-                supported_format = S.presets[S.preset_number].supported;
-            // } else {
-            //     supported_format = true;
-            }
-        }
-
-        if (supported_format) {
+        // RE-30: always attempt to display the matrix. The old "supported"
+        // flag hid factory-write-protected FW1 presets behind an
+        // "indecipherable" message; with the unpacked decoder we can at
+        // least try to show their cells. FW2 is fully correct.
+        if (true) {
             return (
                 <div className="mod-matrix">
                     <div></div>

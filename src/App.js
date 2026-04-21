@@ -19,6 +19,7 @@ import {
     ENVELOPE_SUSTAIN,
     FILTER_CUTOFF,
     FILTER_RESONANCE,
+    FILTER_AMT,
     FILTER_TYPE,
     GLIDE,
     HOLD,
@@ -212,6 +213,7 @@ class App extends Component {
                                     <Control cc={ENVELOPE_ATTACK} group={MOD_GROUP_ENVELOPE}/>
                                     <Control cc={ENVELOPE_DECAY} group={MOD_GROUP_ENVELOPE}/>
                                     <Control cc={ENVELOPE_SUSTAIN} group={MOD_GROUP_ENVELOPE}/>
+                                    <Control cc={FILTER_AMT} group={MOD_GROUP_FILTER}/>
                                 </div>
                             </div>
                             <div className="group keyboard">

@@ -11,13 +11,15 @@ import {
     MOD_MATRIX_DESTINATION,
     MOD_MATRIX,
     multibytesValue,
+    decodeModMatrixFW2,
     MOD_DESTINATION,
     MOD_GROUP_NAME,
     MOD_SRC_CYC_ENV,
     MOD_SRC_KEY_ARP,
     MOD_SRC_PRESS,
     MOD_SRC_LFO,
-    MOD_SRC_ENV, FW1, FW2, CATEGORY
+    MOD_SRC_ENV, FW1, FW2, CATEGORY,
+    oscTypeName
 } from "../model";
 import {MSG_DATA, MSG_NAME, portById} from "../utils/midi";
 import {h, hs} from "../utils/hexstring";
@@ -107,6 +109,13 @@ class State {
         return data[0][12] === 0x0C ? FW1 : def;
         // console.log(data);
         // return 2;
+    }
+
+    currentOscTypeName() {
+        if (!this.presets.length || !this.presets[this.preset_number]) return null;
+        const data = this.presets[this.preset_number].data;
+        if (!data || data.length < 1) return null;
+        return oscTypeName(data[0][14], this.fwVersion());
     }
 
     checkPreset(number) {
@@ -435,10 +444,19 @@ setPresetNumber(number) {
         if (return_raw) {
             return raw;
         } else {
+            // Nearest-match: pick the entry whose `value` is closest to raw.
+            // Decouples values[] order from matching logic so entries can be
+            // listed in natural (UI/hardware) order rather than raw-ascending.
+            let best = null;
+            let bestDist = Infinity;
             for (let entry of m.values) {
-                if (raw <= entry.value) return entry.name;
+                const d = Math.abs(raw - entry.value);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = entry;
+                }
             }
-            return raw;
+            return best ? best.name : raw;
         }
     }
 
@@ -455,28 +473,16 @@ setPresetNumber(number) {
             return 0;
         }
 
-        const data = this.presets[this.preset_number].data;
+        const preset = this.presets[this.preset_number];
+        const data = preset.data;
 
         if (data.length < 39) return 0;  //FIXME
 
-        const m = MOD_MATRIX[this.presets[this.preset_number].fw][src][dest];    //TODO: check params validity
-
-        if (!m) {
-            if (global.dev) console.log("modMatrixValue, no def for", src, dest);
-            return 0;
-        }
-
-        const mask_msb = m.msb.length === 3 ? m.msb[2] : DEFAULT_msb_mask;
-        const mask_sign = m.sign.length === 3 ? m.sign[2] : DEFAULT_sign_mask;
-
-        const raw = multibytesValue(
-            data[ m.MSB[0] ][ m.MSB[1] ],
-            data[ m.LSB[0] ][ m.LSB[1] ],
-            data[ m.msb[0] ][ m.msb[1] ],
-            mask_msb,
-            data[ m.sign[0] ][ m.sign[1] ],
-            mask_sign);
-
+        // RE-32: always use the unpacked-MIDI decoder, regardless of fw.
+        // Works correctly for FW2 and shows something for FW1 — the user
+        // can judge correctness on their own.
+        const raw = decodeModMatrixFW2(data, src, dest);
+        if (raw === null) return 0;
         return return_raw ? raw : (Math.round(raw * 1000 / 32768) / 10);
     }
 

@@ -1,0 +1,29 @@
+{
+  "_comment": "Ordered list of parameters to walk through. Edit freely: add, remove, reorder. Each entry is one knob/switch/matrix cell. 'id' must be unique. 'instruction' is shown verbatim to the user.",
+  "parameters": [
+    { "id": "osc_type",          "name": "Oscillator Type",          "instruction": "Select a different OSCILLATOR TYPE (rotate the Type encoder, e.g. Basic Waves → Superwave)" },
+    { "id": "osc_wave",          "name": "Oscillator Wave",          "instruction": "Tweak the WAVE knob (OSCILLATOR section)" },
+    { "id": "osc_timbre",        "name": "Oscillator Timbre",        "instruction": "Tweak the TIMBRE knob (OSCILLATOR section)" },
+    { "id": "osc_shape",         "name": "Oscillator Shape",         "instruction": "Tweak the SHAPE knob (OSCILLATOR section)" },
+    { "id": "filter_cutoff",     "name": "Filter Cutoff",            "instruction": "Tweak the CUTOFF knob (FILTER section)" },
+    { "id": "filter_resonance",  "name": "Filter Resonance",         "instruction": "Tweak the RESONANCE knob (FILTER section)" },
+    { "id": "filter_amt",        "name": "Filter Amount",            "instruction": "Tweak the AMOUNT knob that controls envelope-to-filter (labeled 'Filter Amt' on the device — bipolar, goes negative and positive)" },
+    { "id": "env_attack",        "name": "Envelope Attack",          "instruction": "Tweak the ATTACK knob (ENVELOPE section)" },
+    { "id": "env_decay",         "name": "Envelope Decay",           "instruction": "Tweak the DECAY knob (ENVELOPE section)" },
+    { "id": "env_sustain",       "name": "Envelope Sustain",         "instruction": "Tweak the SUSTAIN knob (ENVELOPE section)" },
+    { "id": "lfo_rate",          "name": "LFO Rate",                 "instruction": "Tweak the LFO RATE knob" },
+    { "id": "cyc_env_rise",      "name": "Cycling Env Rise",         "instruction": "Tweak the RISE knob (CYCLING ENV section)" },
+    { "id": "cyc_env_fall",      "name": "Cycling Env Fall",         "instruction": "Tweak the FALL knob (CYCLING ENV section)" },
+    { "id": "cyc_env_hold",      "name": "Cycling Env Hold",         "instruction": "Tweak the HOLD knob (CYCLING ENV section)" },
+    { "id": "cyc_env_amount",    "name": "Cycling Env Amount",       "instruction": "Tweak the AMOUNT knob (CYCLING ENV section)" },
+    { "id": "cyc_env_rise_shape","name": "Cycling Env Rise Shape",   "instruction": "Hold SHIFT and turn the RISE knob (accesses Rise shape — likely bipolar: exp curve / linear / log curve)" },
+    { "id": "cyc_env_fall_shape","name": "Cycling Env Fall Shape",   "instruction": "Hold SHIFT and turn the FALL knob (accesses Fall shape — likely bipolar: exp curve / linear / log curve)" },
+    { "id": "arp_rate",          "name": "Arp/Seq Rate",             "instruction": "Tweak the RATE knob (ARP/SEQ section)" },
+    { "id": "glide",             "name": "Glide",                    "instruction": "Tweak the GLIDE knob (top left, near Pitch/Glide)" },
+    { "id": "master_volume",     "name": "Master Volume",            "instruction": "Tweak the MASTER VOLUME knob (top right)" },
+    { "id": "lfo_sync",          "name": "LFO Sync",                 "instruction": "Toggle LFO SYNC (Shift + LFO Rate — or wherever your firmware exposes LFO sync on/off). LOW = Off, HIGH = On.", "lowDefault": "Off", "highDefault": "On" },
+    { "id": "arp_seq_sync",      "name": "Arp/Seq Sync",             "instruction": "Toggle ARP/SEQ SYNC on/off. LOW = Off, HIGH = On.", "lowDefault": "Off", "highDefault": "On" },
+    { "id": "paraphonic",        "name": "Paraphonic",               "instruction": "Toggle PARAPHONIC on/off. LOW = Off (Mono), HIGH = On (Paraphonic).", "lowDefault": "Off", "highDefault": "On" },
+    { "id": "hold",              "name": "Hold",                     "instruction": "Toggle HOLD on/off. LOW = Off, HIGH = On.", "lowDefault": "Off", "highDefault": "On" }
+  ]
+}
