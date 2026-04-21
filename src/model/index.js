@@ -143,15 +143,15 @@ const _osc_type = function (v, fw=FW2) {
             case (v > 0x3a) && (v <= 0x40): return "Speech";
             case (v > 0x40) && (v <= 0x45): return "Modal";
             case (v > 0x45) && (v <= 0x4b): return "Noise";
-            case (v > 0x4b) && (v <= 0x51): return "Vocoder";
-            case (v > 0x51) && (v <= 0x57): return "Bass";
-            case (v > 0x57) && (v <= 0x5d): return "SawX";
-            case (v > 0x5d) && (v <= 0x62): return "Harm";
-            case (v > 0x62) && (v <= 0x68): return "User\nWavetable";
-            case (v > 0x68) && (v <= 0x6e): return "Sample";
-            case (v > 0x6e) && (v <= 0x74): return "Scan\nGrains";
-            case (v > 0x74) && (v <= 0x7a): return "Cloud\nGrains";
-            case (v > 0x7a) && (v <= 0x7f): return "Hit\nGrains";
+            case (v > 0x4b) && (v <= 0x51): return "Bass";
+            case (v > 0x51) && (v <= 0x57): return "SawX";
+            case (v > 0x57) && (v <= 0x5d): return "Harm";
+            case (v > 0x5d) && (v <= 0x62): return "User\nWavetable";
+            case (v > 0x62) && (v <= 0x68): return "Sample";
+            case (v > 0x68) && (v <= 0x6e): return "Scan\nGrains";
+            case (v > 0x6e) && (v <= 0x74): return "Cloud\nGrains";
+            case (v > 0x74) && (v <= 0x7a): return "Hit\nGrains";
+            case (v > 0x7a) && (v <= 0x7f): return "Vocoder";
             default: return "?";
         }
     } else {
@@ -215,62 +215,37 @@ const _osc_type = function (v, fw=FW2) {
 
 };
 
-const _arp_rate_sync = function (v) {
-    // console.log(`arp rate sync`, v, typeof v);
-
-    // arp rate sync
-    // 1	0x00	0	0
-    // 2	0x0c	12	3277
-    // 2t	0x19	25	6553
-    // 4	0x26	38	9830
-    // 4t	0x33	51	13107
-    // 8	0x40	64	16384
-    // 8t	0x4c	76	19660
-    // 16	0x59	89	22937
-    // 16t	0x66	102	26214
-    // 32	0x73	115	29490
-    // 32t	0x7f	127	32767
-
-    switch (true) {
-        case (v >= 0x00) && (v < 3277):     return "1/1";
-        case (v >= 3277) && (v < 6553):     return "1/2";
-        case (v >= 6553) && (v < 9830):     return "1/2T";
-        case (v >= 9830) && (v < 13107):    return "1/4";
-        case (v >= 13107) && (v < 16384):   return "1/4T";
-        case (v >= 16384) && (v < 19660):   return "1/8";
-        case (v >= 19660) && (v < 22937):   return "1/8T";
-        case (v >= 22937) && (v < 26214):   return "1/16";
-        case (v >= 26214) && (v < 29490):   return "1/16T";
-        case (v >= 29490) && (v < 32767):   return "1/32";
-        case (v >= 32767):                  return "1/32T";
-        default:
-            return "?";
+// Nearest-match division lookup. `v` is the raw 16-bit value (0..32767) —
+// called from controlValue() with return_raw semantics (ControlRateSync uses
+// raw={true}). MicroFreak stores the band-centre value (e.g. 9830 for "1/4")
+// but presets sometimes hold slightly-off bytes (e.g. 9804) that the MF still
+// displays as the nearest band. Bucket ranges would misclassify those —
+// nearest-match by absolute distance mirrors what the MF displays.
+function _nearestLabel(v, R) {
+    const step = 32767 / (R.length - 1);
+    let best = 0, bestDist = Infinity;
+    for (let i = 0; i < R.length; i++) {
+        const d = Math.abs(v - i * step);
+        if (d < bestDist) { bestDist = d; best = i; }
     }
+    return R[best];
+}
+
+const _arp_rate_sync = function (v) {
+    const R = ['1/1','1/2','1/2T','1/4','1/4T','1/8','1/8T','1/16','1/16T','1/32','1/32T'];
+    return _nearestLabel(v, R);
 };
 
 const _lfo_rate_sync = function (v) {
+    const R = ['8/1','4/1','2/1','1/1','1/2','1/2T','1/4','1/4T','1/8','1/8T','1/16','1/16T','1/32'];
+    return _nearestLabel(v, R);
+};
 
-    // 8	    0	    0
-    // 4	    0x0a	10
-    // 2	    0x15	21
-    // 1	    0x20	32
-    // 1/2	    0x2a	42
-    // 1/2t	    0x35	53
-    // 1/4	    0x40	64
-    // 1/4t	    0x4a	74
-    // 1/8	    0x55	85
-    // 1/8t	    0x5f	95
-    // 1/16	    0x6a	106
-    // 1/16t	0x75	117
-    // 1/32	    0x7f	127
-
-    const R = ['8/1', '4/1', '2/1', '1/1', '1/2', '1/2T', '1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
-
-    const delta = 32768 / 12;
-
-    // console.log(`lfo rate sync`, v, v / delta, delta, Math.floor(v / delta + 0.5));
-
-    return R[Math.floor(v / delta + 0.5)];
+// Arp rate free (sync OFF): linear 30..240 BPM. Encoder saturates at
+// ~96.13% of full scale (raw 31500), so normalise knob% against that.
+const _arp_rate_free_bpm = function (v) {
+    const t = Math.max(0, Math.min(1, v / 96.13));
+    return Math.round(30 + 210 * t) + " BPM";
 
     // switch (true) {
     //     case (v >= 0x00) && (v < 3277):     return "1/1";
@@ -727,6 +702,147 @@ function findCo1Marker(unpacked) {
     return -1;
 }
 
+// Generic search for a byte-marker in the unpacked stream. Returns the
+// unpacked offset of the first match or -1.
+export function findUnpackedMarker(unpacked, marker) {
+    outer: for (let i = 0; i <= unpacked.length - marker.length; i++) {
+        for (let j = 0; j < marker.length; j++) {
+            if (unpacked[i + j] !== marker[j]) continue outer;
+        }
+        return i;
+    }
+    return -1;
+}
+
+// Marker-anchored readers — immune to per-fmt block-layout shifts.
+//
+// The unpacked preset stream is organised into sections, each opened by a
+// top-level marker like '@#LFOEShape' or '@#VCFDType'. Inside a section,
+// each sub-parameter is stored as:
+//     <sub-marker bytes> 0x63 <tag> <LSB> <MSB>
+// where 0x63 is 'c' (fixed separator) and <tag> is a small per-param id
+// byte. The 16-bit little-endian value is at sub-marker-start +
+// sub-marker-length + 2 (LSB) / +3 (MSB).
+//
+// The top-level marker itself acts as its own sub-marker for the section's
+// "primary" parameter (e.g. '@#LFOEShape' carries the Shape value in the
+// same layout directly after its 0x63).
+
+// Search for `marker` in `unpacked` starting at `fromOffset`. Returns the
+// offset of the first match or -1.
+export function findUnpackedMarkerFrom(unpacked, marker, fromOffset = 0) {
+    outer: for (let i = fromOffset; i <= unpacked.length - marker.length; i++) {
+        for (let j = 0; j < marker.length; j++) {
+            if (unpacked[i + j] !== marker[j]) continue outer;
+        }
+        return i;
+    }
+    return -1;
+}
+
+// Read a 16-bit LE value stored at sub-marker + 2 after a 'c' 0x63 + tag byte.
+// If subMarker is null/undefined, reads the section's own primary value
+// (stored at the top-level marker itself).
+function readSectionParam(data, sectionMarker, subMarker) {
+    const unpacked = unpackMidi7bit(data);
+    const sec = findUnpackedMarker(unpacked, sectionMarker);
+    if (sec < 0) return null;
+    const base = subMarker
+        ? findUnpackedMarkerFrom(unpacked, subMarker, sec + sectionMarker.length)
+        : sec;
+    if (base < 0) return null;
+    const len = (subMarker || sectionMarker).length;
+    const lsb = unpacked[base + len + 2];
+    const msb = unpacked[base + len + 3];
+    if (lsb === undefined || msb === undefined) return null;
+    return (msb << 8) | lsb;
+}
+
+// Section markers (byte arrays).
+const LFO_SECTION = [0x40,0x23,0x4c,0x46,0x4f,0x45,0x53,0x68,0x61,0x70,0x65]; // '@#LFOEShape'
+const VCF_SECTION = [0x40,0x23,0x56,0x43,0x46,0x44,0x54,0x79,0x70,0x65];      // '@#VCFDType'
+const EG1_SECTION = [0x40,0x23,0x45,0x47,0x31,0x44,0x4d,0x6f,0x64,0x65];      // '@#EG1DMode' (Cycling Env)
+const EG2_SECTION = [0x40,0x23,0x45,0x47,0x32,0x44,0x4d,0x6f,0x64,0x65];      // '@#EG2DMode' (AMP Env)
+const ARP_SECTION = [0x40,0x23,0x41,0x72,0x70,0x46,0x45,0x6e,0x61,0x62,0x6c,0x65]; // '@#ArpFEnable'
+const KBD_SECTION = [0x40,0x23,0x4b,0x62,0x64,0x45,0x47,0x6c,0x69,0x64,0x65]; // '@#KbdEGlide'
+const GEN_SECTION = [0x40,0x23,0x47,0x65,0x6e,0x47,0x50,0x61,0x72,0x61,0x66,0x6f,0x6e]; // '@#GenGParafon'
+
+// Sub-markers.
+const SUB_CDIV     = [0x43,0x44,0x69,0x76];                               // 'CDiv'
+const SUB_DRATE    = [0x44,0x52,0x61,0x74,0x65];                          // 'DRate'
+const SUB_DSYNC    = [0x44,0x53,0x79,0x6e,0x63];                          // 'DSync'
+const SUB_FCUTOFF  = [0x46,0x43,0x75,0x74,0x6f,0x66,0x66];                // 'FCutoff'
+const SUB_DRESO    = [0x44,0x52,0x65,0x73,0x6f];                          // 'DReso'
+const SUB_GRISELVL = [0x47,0x52,0x69,0x73,0x65,0x4c,0x76,0x6c];           // 'GRiseLvl'
+const SUB_GRISESLP = [0x47,0x52,0x69,0x73,0x65,0x53,0x6c,0x70];           // 'GRiseSlp'
+const SUB_GFALLLVL = [0x47,0x46,0x61,0x6c,0x6c,0x4c,0x76,0x6c];           // 'GFallLvl'
+const SUB_GFALLSLP = [0x47,0x46,0x61,0x6c,0x6c,0x53,0x6c,0x70];           // 'GFallSlp'
+const SUB_DHOLD    = [0x44,0x48,0x6f,0x6c,0x64];                          // 'DHold'
+const SUB_FAMOUNT  = [0x46,0x41,0x6d,0x6f,0x75,0x6e,0x74];                // 'FAmount'
+const SUB_FATTACK  = [0x46,0x41,0x74,0x74,0x61,0x63,0x6b];                // 'FAttack'
+const SUB_FDECREL  = [0x46,0x44,0x65,0x63,0x52,0x65,0x6c];                // 'FDecRel'
+const SUB_GSUSTAIN = [0x47,0x53,0x75,0x73,0x74,0x61,0x69,0x6e];           // 'GSustain'
+const SUB_ESWING   = [0x45,0x53,0x77,0x69,0x6e,0x67];                     // 'ESwing'
+const SUB_ESPICE   = [0x45,0x53,0x70,0x69,0x63,0x65];                     // 'ESpice'
+const SUB_ESEQON   = [0x45,0x53,0x65,0x71,0x4f,0x6e];                     // 'ESeqOn'
+const SUB_FOCTAVE  = [0x46,0x4f,0x63,0x74,0x61,0x76,0x65];                // 'FOctave'
+const SUB_ERANGE   = [0x45,0x52,0x61,0x6e,0x67,0x65];                     // 'ERange'
+
+// LFO decoders.
+export function decodeLfoShape(data)    { return readSectionParam(data, LFO_SECTION, null);      }
+export function decodeLfoRateSync(data) {
+    // Factory FW1 presets sometimes store CDiv with bit 15 set (signed
+    // negative). MF clamps these to 0, displaying the minimum division
+    // "8/1". 63 out of 462 presets in the user dump are affected.
+    const v = readSectionParam(data, LFO_SECTION, SUB_CDIV);
+    if (v == null) return null;
+    return v & 0x8000 ? 0 : v;
+}
+export function decodeLfoRateFree(data) { return readSectionParam(data, LFO_SECTION, SUB_DRATE); }
+export function decodeLfoSync(data)     { return readSectionParam(data, LFO_SECTION, SUB_DSYNC); }
+
+// VCF decoders.
+export function decodeFilterType(data)      { return readSectionParam(data, VCF_SECTION, null);        }
+export function decodeFilterCutoff(data)    { return readSectionParam(data, VCF_SECTION, SUB_FCUTOFF); }
+export function decodeFilterResonance(data) { return readSectionParam(data, VCF_SECTION, SUB_DRESO);   }
+
+// EG1 / Cycling Env decoders.
+export function decodeCycEnvMode(data)      { return readSectionParam(data, EG1_SECTION, null);         }
+export function decodeCycEnvRise(data)      { return readSectionParam(data, EG1_SECTION, SUB_GRISELVL); }
+export function decodeCycEnvRiseShape(data) { return readSectionParam(data, EG1_SECTION, SUB_GRISESLP); }
+export function decodeCycEnvFall(data)      { return readSectionParam(data, EG1_SECTION, SUB_GFALLLVL); }
+export function decodeCycEnvFallShape(data) { return readSectionParam(data, EG1_SECTION, SUB_GFALLSLP); }
+export function decodeCycEnvHold(data)      { return readSectionParam(data, EG1_SECTION, SUB_DHOLD);    }
+export function decodeCycEnvAmount(data)    { return readSectionParam(data, EG1_SECTION, SUB_FAMOUNT);  }
+
+// EG2 / AMP Envelope decoders.
+export function decodeEnvAttack(data)  { return readSectionParam(data, EG2_SECTION, SUB_FATTACK);  }
+export function decodeEnvDecay(data)   { return readSectionParam(data, EG2_SECTION, SUB_FDECREL);  }
+export function decodeEnvSustain(data) { return readSectionParam(data, EG2_SECTION, SUB_GSUSTAIN); }
+
+// Arp/Seq section decoders.
+export function decodeArpEnable(data)     { return readSectionParam(data, ARP_SECTION, null);        }
+export function decodeSeqEnable(data)     { return readSectionParam(data, ARP_SECTION, SUB_ESEQON);  }
+export function decodeArpRateSync(data)   { return readSectionParam(data, ARP_SECTION, SUB_CDIV);    }
+export function decodeArpRateFree(data)   { return readSectionParam(data, ARP_SECTION, SUB_DRATE);   }
+export function decodeArpSync(data)       { return readSectionParam(data, ARP_SECTION, SUB_DSYNC);   }
+export function decodeArpSwing(data)      { return readSectionParam(data, ARP_SECTION, SUB_ESWING);  }
+export function decodeSpice(data)         { return readSectionParam(data, ARP_SECTION, SUB_ESPICE);  }
+
+// Kbd/Glide section decoders.
+export function decodeGlide(data)         { return readSectionParam(data, KBD_SECTION, null);        }
+export function decodeOctave(data)        { return readSectionParam(data, KBD_SECTION, SUB_FOCTAVE); }
+
+// Arp extra + Gen section decoders.
+export function decodeArpRange(data)      { return readSectionParam(data, ARP_SECTION, SUB_ERANGE); }
+export function decodeParaphonic(data)    { return readSectionParam(data, GEN_SECTION, null);        }
+
+// Filter Amt is the MF's shortcut knob for the ENV → CUTOFF mod matrix cell
+// (per the MicroFreak manual: "Filter Amount regelt die Pegelintensität,
+// welche die Hüllkurve an das Filter sendet"). Read directly from the
+// matrix — gives bipolar signed 16-bit -32768..+32767.
+export function decodeFilterAmt(data)     { return decodeModMatrixFW2(data, MOD_SRC_ENV, FILTER_CUTOFF); }
+
 export function decodeModMatrixFW2(data, src, dest) {
     const s = MOD_MATRIX_FW2_SRC_INDEX.get(src);
     const d = MOD_MATRIX_FW2_DEST_INDEX.get(dest);
@@ -1032,14 +1148,13 @@ export const MOD_MATRIX = {
 export const CONTROL = {
     [FW1]: {
         [GLIDE]: {
+            decoder: decodeGlide,
             MSB: [6, 23],
             LSB: [6, 22],
-            //sign: [0, 0, 0x02],
             msb: [6, 16, 0x20],
             cc: 5,
             mapping: null,
             name: "Glide",
-            // group: MOD_GROUP_
         },
         [OSC_TYPE]: {
             MSB: null,
@@ -1081,9 +1196,10 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [FILTER_CUTOFF]: {
+            // Marker-anchored: sub 'FCutoff' after '@#VCFDType'.
+            decoder: decodeFilterCutoff,
             MSB: [2, 30],
             LSB: [2, 29],
-            //sign: [0, 0, 0x02],
             msb: [2, 24, 0x10],
             cc: 23,
             mapping: null,
@@ -1091,105 +1207,103 @@ export const CONTROL = {
             mod_group: MOD_GROUP_FILTER
         },
         [FILTER_RESONANCE]: {
+            // Marker-anchored: sub 'DReso' after '@#VCFDType'.
+            decoder: decodeFilterResonance,
             MSB: [3, 9],
             LSB: [3, 7],
-            //sign: [0, 0, 0x02],
             msb: [3, 0, 0x40],
             cc: 83,
             mapping: _percent,
             name: 'Resonance',
             mod_group: MOD_GROUP_FILTER
         },
+        [FILTER_AMT]: {
+            // Decoded via ENV→CUTOFF mod matrix cell (see decodeFilterAmt).
+            // Bipolar signed raw -32768..+32767.
+            decoder: decodeFilterAmt,
+            MSB: null,
+            LSB: [32, 10],
+            msb: null,
+            cc: 0,
+            mapping: null,
+            name: 'Filter Amt',
+            mod_group: MOD_GROUP_FILTER
+        },
         [CYCLING_ENV_RISE]: {
-            MSB: [4, 6],
-            LSB: [4, 5],
-            //sign: [0, 0, 0x02],
-            msb: [4, 0, 0x10],
-            cc: 102,
-            mapping: null,  //_0_100,
-            name: 'Rise',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvRise,
+            MSB: [4, 6], LSB: [4, 5], msb: [4, 0, 0x10],
+            cc: 102, mapping: null,
+            name: 'Rise', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_FALL]: {
-            MSB: [5, 2],
-            LSB: [5, 1],
-            //sign: [0, 0, 0x02],
-            msb: [5, 0, 0x01],
-            cc: 103,
-            mapping: null,
-            name: 'Fall',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvFall,
+            MSB: [5, 2], LSB: [5, 1], msb: [5, 0, 0x01],
+            cc: 103, mapping: null,
+            name: 'Fall', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_HOLD]: {
-            MSB: [5, 12],
-            LSB: [5, 11],
-            //sign: [0, 0, 0x02],
-            msb: [5, 8, 0x04],
-            cc: 28,
-            mapping: null,
-            name: 'Hold',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvHold,
+            MSB: [5, 12], LSB: [5, 11], msb: [5, 8, 0x04],
+            cc: 28, mapping: null,
+            name: 'Hold', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_AMOUNT]: {
-            MSB: [6, 6],
-            LSB: [6, 5],
-            //sign: [0, 0, 0x02],
-            msb: [6, 0, 0x10],
-            cc: 24,
-            mapping: _percent,
-            name: 'Amount',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvAmount,
+            MSB: [6, 6], LSB: [6, 5], msb: [6, 0, 0x10],
+            cc: 24, mapping: _percent,
+            name: 'Amount', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_RISE_SHAPE]: {
-            MSB: [4, 20],
-            LSB: [4, 19],
-            msb: [4, 16, 0x04],
-            cc: 24,
-            mapping: null,
+            decoder: decodeCycEnvRiseShape,
+            MSB: [4, 20], LSB: [4, 19], msb: [4, 16, 0x04],
+            cc: 24, mapping: null,
             name: 'Rise shape'
         },
         [CYCLING_ENV_FALL_SHAPE]: {
-            MSB: [5, 26],
-            LSB: [5, 25],
-            msb: [5, 24, 0x01],
-            cc: 24,
-            mapping: null,
+            decoder: decodeCycEnvFallShape,
+            MSB: [5, 26], LSB: [5, 25], msb: [5, 24, 0x01],
+            cc: 24, mapping: null,
             name: 'Fall shape'
         },
         [ARP_SEQ_RATE_FREE]: {
+            decoder: decodeArpRateFree,
             MSB: [10, 5],
             LSB: [10, 4],
             msb: [10, 0, 0x08],
             cc: 91,
-            mapping: null,
+            mapping: _arp_rate_free_bpm,
             name: 'Rate free'
         },
         [ARP_SEQ_RATE_SYNC]: {
+            decoder: decodeArpRateSync,
             MSB: [9, 27],
             LSB: [9, 26],
             msb: [9, 24, 0x02],
             cc: 92,
             mapping: _arp_rate_sync,
-            // enabled: state.arpSyncOn,
             name: 'Rate sync'
         },
         [ARP_SEQ_SWING]: {
+            decoder: decodeArpSwing,
             MSB: [10, 17],
             LSB: [10, 15],
             msb: [19, 8, 0x40],
             cc: 0,
-            mapping: null,  // 50%..75%
+            mapping: null,
             name: 'Swing'
         },
         [LFO_RATE_FREE]: {
+            // Marker-anchored (FW1 uses same section layout as FW2).
+            decoder: decodeLfoRateFree,
             MSB: [13, 10],
             LSB: [13, 9],
             msb: [13, 8, 0x01],
             cc: 93,
-            mapping: null,
+            mapping: _rangedLog(0.06, 100, "Hz"),
             name: 'Rate free'
         },
         [LFO_RATE_SYNC]: {
+            decoder: decodeLfoRateSync,
             MSB: [12, 31],
             LSB: [12, 30],
             msb: [12, 24, 0x20],
@@ -1198,34 +1312,22 @@ export const CONTROL = {
             name: 'Rate sync'
         },
         [ENVELOPE_ATTACK]: {
-            MSB: [14, 29],
-            LSB: [14, 28],
-            // sign: [1, 0x02],
-            msb: [14, 24, 0x08],
-            cc: 105,
-            mapping: null,
-            name: 'Attack',
-            mod_group: MOD_GROUP_ENVELOPE
+            decoder: decodeEnvAttack,
+            MSB: [14, 29], LSB: [14, 28], msb: [14, 24, 0x08],
+            cc: 105, mapping: null,
+            name: 'Attack', mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_DECAY]: {
-            MSB: [15, 10],
-            LSB: [15, 9],
-            //sign: [0, 0, 0x02],
-            msb: [15, 8, 0x01],
-            cc: 106,
-            mapping: null,
-            name: 'Decay/Rel',
-            mod_group: MOD_GROUP_ENVELOPE
+            decoder: decodeEnvDecay,
+            MSB: [15, 10], LSB: [15, 9], msb: [15, 8, 0x01],
+            cc: 106, mapping: null,
+            name: 'Decay/Rel', mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_SUSTAIN]: {
-            MSB: [15, 23],
-            LSB: [15, 22],
-            //sign: [0, 0, 0x02],
-            msb: [15, 16, 0x20],
-            cc: 29,
-            mapping: _percent,
-            name: 'Sustain',
-            mod_group: MOD_GROUP_ENVELOPE
+            decoder: decodeEnvSustain,
+            MSB: [15, 23], LSB: [15, 22], msb: [15, 16, 0x20],
+            cc: 29, mapping: _percent,
+            name: 'Sustain', mod_group: MOD_GROUP_ENVELOPE
         },
         // [HOLD]: {
         //     MSB: [0, 0],
@@ -1237,9 +1339,9 @@ export const CONTROL = {
         //     name: 'Hold'
         // },
         [SPICE]: {
+            decoder: decodeSpice,
             MSB: [0, 0],
             LSB: [0, 0],
-            //sign: [0, 0, 0x02],
             msb: [0, 0, 0x01],
             cc: 2,
             mapping: null,
@@ -1248,7 +1350,8 @@ export const CONTROL = {
     },
     [FW2]: {
         [GLIDE]: {
-            // RE walk: positions + cubic ms curve 0..10 s.
+            // Marker-anchored: primary value of '@#KbdEGlide'.
+            decoder: decodeGlide,
             LSB: [7, 3],
             MSB: [7, 4],
             msb: [7, 0, 0x04],
@@ -1295,8 +1398,8 @@ export const CONTROL = {
             mod_group: MOD_GROUP_OSC
         },
         [FILTER_CUTOFF]: {
-            // RE walk: positions + log Hz range (16..26900). Log because
-            // cutoff is perceptually linear (octaves per knob turn).
+            // Marker-anchored: sub 'FCutoff' after '@#VCFDType'.
+            decoder: decodeFilterCutoff,
             LSB: [3, 10],
             MSB: [3, 11],
             msb: [3, 8, 0x02],
@@ -1306,7 +1409,8 @@ export const CONTROL = {
             mod_group: MOD_GROUP_FILTER
         },
         [FILTER_RESONANCE]: {
-            // RE walk: positions + 0..100%
+            // Marker-anchored: sub 'DReso' after '@#VCFDType'.
+            decoder: decodeFilterResonance,
             LSB: [3, 20],
             MSB: [3, 21],
             msb: [3, 16, 0x08],
@@ -1316,9 +1420,9 @@ export const CONTROL = {
             mod_group: MOD_GROUP_FILTER
         },
         [FILTER_AMT]: {
-            // RE walk: bipolar -100..+100. Byte [32][10] is the primary (0..0x7F)
-            // with center ~0x40 = 0%. [32][8] and [32][9] carry sign/precision
-            // that we decode specially in Control.js (raw={true} path).
+            // Decoded via ENV→CUTOFF mod matrix cell (see decodeFilterAmt).
+            // Bipolar signed raw -32768..+32767.
+            decoder: decodeFilterAmt,
             MSB: null,
             LSB: [32, 10],
             msb: null,
@@ -1328,78 +1432,54 @@ export const CONTROL = {
             mod_group: MOD_GROUP_FILTER
         },
         [CYCLING_ENV_RISE]: {
-            LSB: [4, 18],
-            MSB: [4, 19],
-            msb: [4, 16, 0x02],
-            cc: 102,
-            mapping: _rangedPow(10000, 3, "ms"),
-            name: 'Rise',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvRise,
+            LSB: [4, 18], MSB: [4, 19], msb: [4, 16, 0x02],
+            cc: 102, mapping: _rangedPow(10000, 3, "ms"),
+            name: 'Rise', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_FALL]: {
-            LSB: [5, 13],
-            MSB: [5, 14],
-            msb: [5, 8, 0x10],
-            cc: 103,
-            mapping: _rangedPow(10000, 3, "ms"),
-            name: 'Fall',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvFall,
+            LSB: [5, 13], MSB: [5, 14], msb: [5, 8, 0x10],
+            cc: 103, mapping: _rangedPow(10000, 3, "ms"),
+            name: 'Fall', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_HOLD]: {
-            // LSB/MSB non-adjacent. Unlike rise/fall (ms), HOLD is linear %.
-            LSB: [5, 23],
-            MSB: [5, 25],
-            msb: [5, 16, 0x40],
-            cc: 28,
-            mapping: _ranged(0, 100, "%"),
-            name: 'Hold',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvHold,
+            LSB: [5, 23], MSB: [5, 25], msb: [5, 16, 0x40],
+            cc: 28, mapping: _ranged(0, 100, "%"),
+            name: 'Hold', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_AMOUNT]: {
-            // RE walk: positions + 0..100%
-            LSB: [6, 18],
-            MSB: [6, 19],
-            msb: [6, 16, 0x02],
-            cc: 24,
-            mapping: _ranged(0, 100, "%"),
-            name: 'Amount',
-            mod_group: MOD_GROUP_CYCLING_ENV
+            decoder: decodeCycEnvAmount,
+            LSB: [6, 18], MSB: [6, 19], msb: [6, 16, 0x02],
+            cc: 24, mapping: _ranged(0, 100, "%"),
+            name: 'Amount', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_RISE_SHAPE]: {
-            // RE walk: positions + 0..100% (LSB/MSB span block boundary)
-            LSB: [4, 31],
-            MSB: [5, 1],
-            msb: [4, 24, 0x40],
-            cc: 24,
-            mapping: _ranged(0, 100, "%"),
+            decoder: decodeCycEnvRiseShape,
+            LSB: [4, 31], MSB: [5, 1], msb: [4, 24, 0x40],
+            cc: 24, mapping: _ranged(0, 100, "%"),
             name: 'Rise shape'
         },
         [CYCLING_ENV_FALL_SHAPE]: {
-            // RE walk: positions + 0..100%
-            LSB: [6, 5],
-            MSB: [6, 6],
-            msb: [6, 0, 0x10],
-            cc: 24,
-            mapping: _ranged(0, 100, "%"),
+            decoder: decodeCycEnvFallShape,
+            LSB: [6, 5], MSB: [6, 6], msb: [6, 0, 0x10],
+            cc: 24, mapping: _ranged(0, 100, "%"),
             name: 'Fall shape'
         },
         [ARP_SEQ_RATE_FREE]: {
-            // RE walk (sync OFF): positions confirmed. Linear BPM 30..240.
-            // Note: encoder saturates the stored byte at raw = 31500 (= 0x7B00 + 0x0C)
-            // which is ~96.1% of full 15-bit scale, NOT 32767. Scaling factor
-            // 210/96.13 = 2.1845 converts the controlValue-scaled v (0..100) to BPM.
+            // Marker-anchored: sub 'DRate' after '@#ArpFEnable'.
+            decoder: decodeArpRateFree,
             LSB: [11, 6],
             MSB: [11, 7],
             msb: [11, 0, 0x01],
             cc: 91,
-            mapping: function (v) {
-                const t = Math.max(0, Math.min(1, v / 96.13));
-                return Math.round(30 + 210 * t) + " BPM";
-            },
+            mapping: _arp_rate_free_bpm,
             name: 'Rate free'
         },
         [ARP_SEQ_RATE_SYNC]: {
-            // RE walk (sync ON): positions updated for FW2. Division mapping unchanged.
+            // Marker-anchored: sub 'CDiv' after '@#ArpFEnable'.
+            decoder: decodeArpRateSync,
             LSB: [10, 28],
             MSB: [10, 29],
             msb: [10, 24, 0x08],
@@ -1408,6 +1488,8 @@ export const CONTROL = {
             name: 'Rate sync'
         },
         [ARP_SEQ_SWING]: {
+            // Marker-anchored: sub 'ESwing' after '@#ArpFEnable'.
+            decoder: decodeArpSwing,
             MSB: [11, 5],
             LSB: [11, 6],
             msb: [11, 0, 0x10],
@@ -1416,7 +1498,8 @@ export const CONTROL = {
             name: 'Swing'
         },
         [LFO_RATE_FREE]: {
-            // RE walk (sync OFF): positions + log Hz range (0.06 .. 100 Hz).
+            // Marker-anchored: sub 'DRate' after '@#LFOEShape'.
+            decoder: decodeLfoRateFree,
             LSB: [14, 11],
             MSB: [14, 12],
             msb: [14, 8, 0x04],
@@ -1425,8 +1508,8 @@ export const CONTROL = {
             name: 'Rate free'
         },
         [LFO_RATE_SYNC]: {
-            // RE walk (sync ON): positions updated for FW2. Division mapping
-            // stays as the existing _lfo_rate_sync (13 values 8/1..1/32).
+            // Marker-anchored: sub 'CDiv' after '@#LFOEShape'.
+            decoder: decodeLfoRateSync,
             LSB: [14, 1],
             MSB: [14, 2],
             msb: [14, 0, 0x01],
@@ -1435,33 +1518,22 @@ export const CONTROL = {
             name: 'Rate sync'
         },
         [ENVELOPE_ATTACK]: {
-            LSB: [15, 30],
-            MSB: [15, 31],
-            msb: [15, 24, 0x20],
-            cc: 105,
-            mapping: _rangedPow(10000, 3, "ms"),
-            name: 'Attack',
-            mod_group: MOD_GROUP_ENVELOPE
+            decoder: decodeEnvAttack,
+            LSB: [15, 30], MSB: [15, 31], msb: [15, 24, 0x20],
+            cc: 105, mapping: _rangedPow(10000, 3, "ms"),
+            name: 'Attack', mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_DECAY]: {
-            // ms range up to 25 s
-            LSB: [16, 11],
-            MSB: [16, 12],
-            msb: [16, 8, 0x04],
-            cc: 106,
-            mapping: _rangedPow(25000, 3, "ms"),
-            name: 'Decay/Rel',
-            mod_group: MOD_GROUP_ENVELOPE
+            decoder: decodeEnvDecay,
+            LSB: [16, 11], MSB: [16, 12], msb: [16, 8, 0x04],
+            cc: 106, mapping: _rangedPow(25000, 3, "ms"),
+            name: 'Decay/Rel', mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_SUSTAIN]: {
-            // RE walk: positions + 0..100%
-            LSB: [16, 25],
-            MSB: [16, 26],
-            msb: [16, 24, 0x01],
-            cc: 29,
-            mapping: _ranged(0, 100, "%"),
-            name: 'Sustain',
-            mod_group: MOD_GROUP_ENVELOPE
+            decoder: decodeEnvSustain,
+            LSB: [16, 25], MSB: [16, 26], msb: [16, 24, 0x01],
+            cc: 29, mapping: _ranged(0, 100, "%"),
+            name: 'Sustain', mod_group: MOD_GROUP_ENVELOPE
         },
         // [HOLD]: {
         //     MSB: [0, 0],
@@ -1473,9 +1545,10 @@ export const CONTROL = {
         //     name: 'Hold'
         // },
         [SPICE]: {
+            // Marker-anchored: sub 'ESpice' after '@#ArpFEnable'.
+            decoder: decodeSpice,
             MSB: [0, 0],
             LSB: [0, 0],
-            //sign: [0, 0, 0x02],
             msb: [0, 0, 0x01],
             cc: 2,
             mapping: null,
@@ -1487,6 +1560,7 @@ export const CONTROL = {
 export const SWITCH = {
     [FW1]: {
         [FILTER_TYPE]: {
+            decoder: decodeFilterType,
             MSB: [2, 18],
             LSB: [2, 17],
             msb: [2, 16, 0x01],
@@ -1508,6 +1582,7 @@ export const SWITCH = {
             name: "Amp mod"
         },
         [CYCLING_ENV_MODE]: {
+            decoder: decodeCycEnvMode,
             MSB: [3, 25],
             LSB: [3, 23],
             msb: [3, 16, 0x40],
@@ -1519,24 +1594,27 @@ export const SWITCH = {
             name: "Mode"
         },
         [LFO_SHAPE]: {
+            // Marker-anchored via '@#LFOEShape' — works across all fmts.
+            // values[] order kept identical to FW2 so labels don't shift
+            // between presets of different firmware variants.
+            decoder: decodeLfoShape,
             MSB: [12, 22],
             LSB: [12, 21],
             msb: [12, 16, 0x10],
             values: [
-                {name: 'Sine', value: 0},
-                {name: 'Tri', value: 0x1999},
-                {name: 'Saw', value: 0x3333},
-                {name: 'Sqa', value: 0x4ccc},
-                {name: 'SnH', value: 0x6666},
-                {name: 'SnHF', value: 0x7fff}
+                {name: 'Sine', value: 0x0000},
+                {name: 'Sqr',  value: 0x4CCC},
+                {name: 'Tri',  value: 0x1999},
+                {name: 'SnH',  value: 0x6666},
+                {name: 'Saw',  value: 0x3333},
+                {name: 'SnHF', value: 0x7FFF}
             ],
             name: "Shape",
             mod_group: MOD_GROUP_LFO
         },
         [ARP]: {
-            MSB: [9, 6],
-            LSB: [9, 5],
-            msb: [9, 0, 0x10],
+            decoder: decodeArpEnable,
+            MSB: [9, 6], LSB: [9, 5], msb: [9, 0, 0x10],
             values: [
                 {name: 'Off', value: 0},
                 {name: 'On', value: 0x7fff}
@@ -1544,9 +1622,8 @@ export const SWITCH = {
             name: "Arp"
         },
         [SEQ]: {
-            MSB: [12, 5],
-            LSB: [12, 4],
-            msb: [12, 0, 0x08],
+            decoder: decodeSeqEnable,
+            MSB: [12, 5], LSB: [12, 4], msb: [12, 0, 0x08],
             values: [
                 {name: 'Off', value: 0},
                 {name: 'On', value: 0x7fff}
@@ -1554,18 +1631,21 @@ export const SWITCH = {
             name: "Seq"
         },
         [ARP_SEQ_MOD]: {
+            // Marker-anchored: sub 'ERange' after '@#ArpFEnable'.
+            decoder: decodeArpRange,
             MSB: [9, 18],
             LSB: [9, 17],
             msb: [9, 16, 0x01],
             values: [
-                {name: '1', value: 17408},
-                {name: '2', value: 10922},
-                {name: '3', value: 21845},
-                {name: '4', value: 0x7fff}
+                {name: '1', value: 0x0000},
+                {name: '2', value: 0x2AAA},
+                {name: '3', value: 0x5555},
+                {name: '4', value: 0x7FFF}
             ],
             name: "Mod"
         },
-        [ARP_SEQ_SYNC]: {   //TODO
+        [ARP_SEQ_SYNC]: {
+            decoder: decodeArpSync,
             MSB: [10, 27],
             LSB: [10, 26],
             msb: [10, 24, 0x02],
@@ -1576,6 +1656,8 @@ export const SWITCH = {
             name: "Sync"
         },
         [LFO_SYNC]: {
+            // Marker-anchored (FW1 uses same section layout as FW2).
+            decoder: decodeLfoSync,
             MSB: [13, 20],
             LSB: [13, 19],
             msb: [13, 16, 0x04],
@@ -1586,6 +1668,8 @@ export const SWITCH = {
             name: "Sync"
         },
         [PARAPHONIC]: {
+            // Marker-anchored: primary value of '@#GenGParafon'.
+            decoder: decodeParaphonic,
             MSB: [16, 23],
             LSB: [16, 22],
             msb: [16, 16, 0x20],
@@ -1596,10 +1680,10 @@ export const SWITCH = {
             name: "Paraphonic"
         },
         [OCTAVE]: {
+            decoder: decodeOctave,
             MSB: [7, 4],
             LSB: [7, 3],
             msb: [7, 0, 0x04],
-            // mapping: _octave,
             values: [
                 {name: '-3', value: 0},
                 {name: '-2', value: 0x1555},
@@ -1624,9 +1708,8 @@ export const SWITCH = {
     },
     [FW2]: {
         [FILTER_TYPE]: {
-            // RE prescan: positions corrected; values[] same as pre-existing model
-            // (which had the right raw assignments all along; only the positions
-            // were outdated for FW2).
+            // Marker-anchored: primary value of '@#VCFDType'.
+            decoder: decodeFilterType,
             LSB: [2, 29],
             MSB: [2, 30],
             msb: [2, 24, 0x10],
@@ -1659,7 +1742,8 @@ export const SWITCH = {
             name: "Amp mod"
         },
         [CYCLING_ENV_MODE]: {
-            // RE prescan: positions updated for FW2; values same as pre-existing model.
+            // Marker-anchored: primary value of '@#EG1DMode'.
+            decoder: decodeCycEnvMode,
             LSB: [4, 4],
             MSB: [4, 5],
             msb: [4, 0, 0x08],
@@ -1686,14 +1770,14 @@ export const SWITCH = {
         //     mod_group: MOD_GROUP_LFO
         // },
         [LFO_SHAPE]: {
-            // RE prescan: positions correct. Raw encoding formula is
-            //   (MSB << 8) + (msb_bit << 7) + LSB
-            // giving evenly-spaced values at 0x1999 increments in cycle order.
-            // values[] is in HARDWARE display order (2-col grid, row-major):
-            //   Sine Sqr
-            //   Tri  SnH
-            //   Saw  SnHF
-            // switchValue() uses nearest-match so display order is free.
+            // Marker-anchored decoder: '@#LFOEShape' in unpacked stream, value
+            // is little-endian 16-bit at marker+13/+14. Works across all fmts
+            // (0x0c, 0x11, 0x12, 0x16, ...) because block layouts differ per
+            // fmt but the marker and its relative offsets are universal.
+            // Hardcoded LSB/MSB below are the fmt-0x16-only positions from the
+            // RE walk — kept as documentation; switchValue() uses decoder when
+            // present.
+            decoder: decodeLfoShape,
             LSB: [13, 23],
             MSB: [13, 25],
             msb: [13, 16, 0x40],
@@ -1709,10 +1793,9 @@ export const SWITCH = {
             mod_group: MOD_GROUP_LFO
         },
         [ARP]: {
-            // RE prescan: positions updated for FW2.
-            LSB: [10, 7],
-            MSB: [10, 9],
-            msb: [10, 0, 0x40],
+            // Marker-anchored: primary of '@#ArpFEnable'.
+            decoder: decodeArpEnable,
+            LSB: [10, 7], MSB: [10, 9], msb: [10, 0, 0x40],
             values: [
                 {name: 'Off', value: 0x0000},
                 {name: 'On',  value: 0x7FFF}
@@ -1720,10 +1803,9 @@ export const SWITCH = {
             name: "Arp"
         },
         [SEQ]: {
-            // RE prescan: positions updated for FW2.
-            LSB: [13, 6],
-            MSB: [13, 7],
-            msb: [13, 0, 0x20],
+            // Marker-anchored: sub 'ESeqOn' after '@#ArpFEnable'.
+            decoder: decodeSeqEnable,
+            LSB: [13, 6], MSB: [13, 7], msb: [13, 0, 0x20],
             values: [
                 {name: 'Off', value: 0x0000},
                 {name: 'On',  value: 0x7FFF}
@@ -1743,8 +1825,8 @@ export const SWITCH = {
         //     name: "Mod"
         // },
         [ARP_SEQ_MOD]: {
-            // RE prescan: positions updated for FW2. Values are 4 evenly-spaced
-            // at 0x2AAA intervals (old "1" value 17408 was 0x4400 — wrong).
+            // Marker-anchored: sub 'ERange' after '@#ArpFEnable'.
+            decoder: decodeArpRange,
             LSB: [10, 19],
             MSB: [10, 20],
             msb: [10, 16, 0x04],
@@ -1757,7 +1839,8 @@ export const SWITCH = {
             name: "Mod"
         },
         [ARP_SEQ_SYNC]: {
-            // RE walk: positions updated for FW2.
+            // Marker-anchored: sub 'DSync' after '@#ArpFEnable'.
+            decoder: decodeArpSync,
             LSB: [11, 28],
             MSB: [11, 29],
             msb: [11, 24, 0x08],
@@ -1768,7 +1851,8 @@ export const SWITCH = {
             name: "Sync"
         },
         [LFO_SYNC]: {
-            // RE walk: positions updated for FW2.
+            // Marker-anchored: sub 'DSync' after '@#LFOEShape'.
+            decoder: decodeLfoSync,
             LSB: [14, 21],
             MSB: [14, 22],
             msb: [14, 16, 0x10],
@@ -1779,7 +1863,8 @@ export const SWITCH = {
             name: "Sync"
         },
         [PARAPHONIC]: {
-            // RE walk: positions updated for FW2. Removed duplicate entry.
+            // Marker-anchored: primary value of '@#GenGParafon'.
+            decoder: decodeParaphonic,
             LSB: [18, 3],
             MSB: [18, 4],
             msb: [18, 0, 0x04],
@@ -1790,8 +1875,8 @@ export const SWITCH = {
             name: "Paraphonic"
         },
         [OCTAVE]: {
-            // RE prescan: positions updated for FW2; values already correct
-            // (7 evenly-spaced at 0x1555 intervals).
+            // Marker-anchored: sub 'FOctave' after '@#KbdEGlide'.
+            decoder: decodeOctave,
             LSB: [7, 15],
             MSB: [7, 17],
             msb: [7, 8, 0x40],

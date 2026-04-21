@@ -406,9 +406,11 @@ setPresetNumber(number) {
         if (data.length < 39) return 0;  //FIXME
 
         let raw;
-        if (m.MSB) {
+        if (typeof m.decoder === 'function') {
+            const r = m.decoder(data);
+            raw = r == null ? 0 : r;
+        } else if (m.MSB) {
             const mask_msb = m.msb.length === 3 ? m.msb[2] : DEFAULT_msb_mask;
-            // const mask_sign = m.sign.length === 3 ? m.sign[2] : DEFAULT_sign_mask;
             raw = multibytesValue(
                 data[m.MSB[0]][m.MSB[1]],
                 data[m.LSB[0]][m.LSB[1]],
@@ -432,14 +434,19 @@ setPresetNumber(number) {
 
         if (data.length < 39) return 0;  //FIXME
 
-        const mask_msb = m.msb.length === 3 ? m.msb[2] : DEFAULT_msb_mask;
-
-        const raw = multibytesValue(
-            data[ m.MSB[0] ][ m.MSB[1] ],
-            data[ m.LSB[0] ][ m.LSB[1] ],
-            data[ m.msb[0] ][ m.msb[1] ],
-            mask_msb,
-            0, 0);
+        let raw;
+        if (typeof m.decoder === 'function') {
+            const r = m.decoder(data);
+            raw = r == null ? 0 : r;
+        } else {
+            const mask_msb = m.msb.length === 3 ? m.msb[2] : DEFAULT_msb_mask;
+            raw = multibytesValue(
+                data[ m.MSB[0] ][ m.MSB[1] ],
+                data[ m.LSB[0] ][ m.LSB[1] ],
+                data[ m.msb[0] ][ m.msb[1] ],
+                mask_msb,
+                0, 0);
+        }
 
         if (return_raw) {
             return raw;

@@ -2,6 +2,78 @@
 
 Items to revisit after the current switch-mapping pass is complete.
 
+## Status of earlier items (RE-33 .. RE-42)
+
+The hardcoded `[block, byte]` positions from RE-32's knob/switch walk were
+calibrated on a single FW2 reference preset (449 "Aphexian Kick", fmt 0x16).
+Empirically, preset blocks have **seven distinct fmt markers** in the field
+(`data[0][12]` ∈ {0x0c, 0x0d, 0x0e, 0x11, 0x12, 0x16, 0x7f}), each with a
+different byte layout — so the walk's positions only worked for ~14 % of the
+user's 512-preset dump.
+
+Fix: migrate all per-parameter reads to **marker-anchored** decoders, like
+the mod matrix already was. Structure in the unpacked stream (via
+`unpackMidi7bit()`):
+
+```
+@#<Section>...c <tag> <LSB> <MSB>      ← primary value of the section
+<SubMarker>c  <tag> <LSB> <MSB>         ← sub-parameter (same layout)
+<SubMarker>c  <tag> <LSB> <MSB>
+...
+@#<NextSection>...
+```
+
+Section markers and their sub-params (all implemented in
+`src/model/index.js` via `readSectionParam`):
+
+- `@#VCFDType` → FILTER_TYPE (primary), `FCutoff`, `DReso`
+- `@#EG1DMode` → CYCLING_ENV_MODE (primary), `GRiseLvl`, `GRiseSlp`,
+  `GFallLvl`, `GFallSlp`, `DHold`, `FAmount`
+- `@#KbdEGlide` → GLIDE (primary), `FOctave`
+- `@#ArpFEnable` → ARP (primary), `ERange`, `CDiv`, `DRate`, `ESwing`,
+  `DSync`, `ESpice`, `ESeqOn`
+- `@#LFOEShape` → LFO_SHAPE (primary), `CDiv`, `DRate`, `DSync`
+- `@#EG2DMode` → `FAttack`, `FDecRel`, `GSustain`
+- `@#GenGParafon` → PARAPHONIC (primary)
+- `@#Co1` (mod matrix) → already marker-anchored in RE-32
+
+Items addressed by RE-33 .. RE-42:
+
+- **§2 Arp/LFO rate sync**: nearest-match replaces bucket ranges in
+  `_arp_rate_sync` / `_lfo_rate_sync` (factory presets often store a raw
+  value slightly off the band centre, which bucket-ranges misclassified).
+- **§4 filter_amt**: resolved. `FILTER_AMT` is a shortcut for the mod
+  matrix ENV→CUTOFF cell (confirmed via MF manual). `decodeFilterAmt()`
+  reads that cell directly; the legacy `data[32][10]`/`[32][8]` sign-
+  magnitude path is removed.
+- Added FW1 definitions for `FILTER_AMT` (was only FW2 → `"—"` placeholder
+  for FW1 presets), `ARP_SEQ_RATE_FREE` BPM mapping, `LFO_RATE_FREE` Hz
+  mapping (were `mapping: null` → displayed raw percent).
+- LFO `CDiv` clamp: ~14 % of presets store the sync divisor with bit 15
+  set (signed-negative, e.g. `0xB71D`); MF clamps to 0 = "8/1" when reading
+  these, `decodeLfoRateSync()` mirrors that.
+- LFO Shape labels now identical in FW1 and FW2 (`Sqa` → `Sqr`, order
+  aligned to FW2 hardware 2-col grid). Prevents labels jumping position
+  between presets of different fw.
+
+Items still open:
+
+- **§1 log scaling**: partially addressed. `_rangedLog` / `_rangedPow` are
+  single-point (0 % / 100 %) extrapolations. A 3-point MID capture would
+  distinguish log vs linear and catch cases where the curve shape is wrong
+  (user confirmed ~1 % noise on LFO rate free vs MF display, acceptable).
+- **§3 ARP_SEQ_RATE non-full-range knob**: walked max still saturates at
+  ~96.13 %; the BPM mapping divides by 96.13 to compensate. Works, but
+  root cause not understood.
+- **OSC_TYPE**: still uses hardcoded `data[0][14]`. The 22-band `_osc_type`
+  mapping was reordered in RE-33 based on user's device display, but the
+  byte-position is still fmt-0x16-specific. The section marker for OSC is
+  `#VCODType` (without leading `@`, first of the stream), and the enum
+  value probably lives differently than 16-bit LSB/MSB knobs — to be
+  worked out in a future pass.
+- **AMP_MOD**: location unclear; not yet migrated. Visible in UI but
+  correctness not verified by user.
+
 ## 1. Logarithmic scaling for time/frequency knobs
 
 The current `_ranged(min, max, unit)` helper in `src/model/index.js` does

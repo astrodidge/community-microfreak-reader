@@ -42,26 +42,15 @@ class Control extends Component {
             oscDisplay = oscParamDisplay(rawVal, oscParamKey, typeName);
         }
 
-        // FILTER_AMT: bipolar -100..+100 with sign+magnitude encoding where
-        // the negative side is INVERTED (byte 0 = -100, byte 127 = just-below-0).
-        //   sign bit:  data[32][8] & 0x02
-        //   magnitude: data[32][10]  (0..0x7F)
-        //   positive: display = byte * 100/127
-        //   negative: display = -(100 - byte * 100/127)
+        // FILTER_AMT: bipolar -100..+100 from the ENV→CUTOFF mod matrix cell
+        // (per MF manual, the knob is a shortcut for that mod amount).
+        // Decoder returns signed 16-bit raw (-32768..+32767) already.
         let bipolarMapped = null;
         if (cc === FILTER_AMT) {
-            const preset = S.presets && S.presets[S.preset_number];
-            const data = preset && preset.data;
-            if (data && data.length > 32 && data[32] && data[32].length > 10) {
-                const signByte = data[32][8];
-                const magByte  = data[32][10];
-                const isNeg    = (signByte & 0x02) !== 0;
-                const mag      = (magByte / 127) * 100;
-                const displayPct = isNeg ? -(100 - mag) : mag;
-                bipolarMapped = Math.round(displayPct) + "%";
-                // Knob visual: map -100..+100 to 0..100 (center at 50).
-                v = Math.max(0, Math.min(100, 50 + displayPct / 2));
-            }
+            const rawSigned = S.controlValue(control, true);
+            const displayPct = rawSigned * 100 / 32768;
+            bipolarMapped = Math.round(displayPct) + "%";
+            v = Math.max(0, Math.min(100, 50 + displayPct / 2));
         }
 
         let mapped;
