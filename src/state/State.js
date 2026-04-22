@@ -26,6 +26,14 @@ import {h, hs} from "../utils/hexstring";
 import {compressToEncodedURIComponent, decompressFromEncodedURIComponent} from "lz-string";
 import axios from "axios";
 import {getParameterByName} from "../utils/sharing";
+import {
+    extractVcodBytes,
+    hashVcodBytes,
+    getOverride,
+    setOverride,
+    clearOverride,
+    loadOverrides
+} from "../utils/oscOverrides";
 
 class State {
 
@@ -59,7 +67,22 @@ class State {
 
     error = 0;  // 0 means no error
 
+    // User-supplied OSC-type overrides, keyed by VCOD-bytes hash. Loaded
+    // from localStorage on startup. Bumped whenever an override is set or
+    // cleared so MobX observers (Control.js) re-render with the new value.
+    oscOverridesVersion = 0;
+
+    // When false, all OSC-type override logic is skipped — no dropdown, no
+    // per-preset hash/localStorage lookup. Big perf boost for preset-list
+    // renders (each row would otherwise unpack+hash+lookup). Overrides in
+    // storage are preserved; toggling back on re-applies them.
+    taggingEnabled = true;
+
     constructor() {
+        // Prime the overrides map from localStorage; reads go through
+        // getOverride() which reads localStorage each time, but initial load
+        // catches any parse errors early.
+        loadOverrides();
         // console.log("constructor", this.preset_number_string, this.presets);
         const data = getParameterByName('data');
         // console.log("constructor", data);
@@ -112,10 +135,67 @@ class State {
     }
 
     currentOscTypeName() {
+        return this.oscTypeNameFor(this.preset_number);
+    }
+
+    // OSC type name for a specific preset slot, with user override applied.
+    // Used by ListView so the list mirrors what Control.js shows.
+    oscTypeNameFor(index) {
+        if (!this.presets.length || !this.presets[index]) return null;
+        const data = this.presets[index].data;
+        if (!data || data.length < 1) return null;
+        const fw = data[0] && data[0][12] === 0x0C ? FW1 : FW2;
+        if (!this.taggingEnabled) return oscTypeName(data, fw);
+        // Read observable so MobX re-runs this computation when overrides change.
+        // eslint-disable-next-line no-unused-expressions
+        this.oscOverridesVersion;
+        const hash = hashVcodBytes(extractVcodBytes(data));
+        if (hash) {
+            const entry = getOverride(hash);
+            if (entry) return entry.oscType;
+        }
+        return oscTypeName(data, fw);
+    }
+
+    // Return the user-set OSC-type override for the current preset, or null
+    // if none. User picks always win over the decoded value.
+    currentOscTypeOverride() {
+        if (!this.taggingEnabled) return null;
         if (!this.presets.length || !this.presets[this.preset_number]) return null;
         const data = this.presets[this.preset_number].data;
         if (!data || data.length < 1) return null;
-        return oscTypeName(data, this.fwVersion());
+        // eslint-disable-next-line no-unused-expressions
+        this.oscOverridesVersion;
+        const hash = hashVcodBytes(extractVcodBytes(data));
+        if (!hash) return null;
+        const entry = getOverride(hash);
+        return entry ? entry.oscType : null;
+    }
+
+    setTaggingEnabled(enabled) {
+        this.taggingEnabled = !!enabled;
+    }
+
+    setCurrentOscTypeOverride(oscType) {
+        if (!this.presets.length || !this.presets[this.preset_number]) return;
+        const preset = this.presets[this.preset_number];
+        const data = preset.data;
+        if (!data || data.length < 1) return;
+        const bytes = extractVcodBytes(data);
+        const hash = hashVcodBytes(bytes);
+        if (!hash) return;
+        setOverride(hash, oscType, bytes, preset.name || "");
+        this.oscOverridesVersion++;
+    }
+
+    clearCurrentOscTypeOverride() {
+        if (!this.presets.length || !this.presets[this.preset_number]) return;
+        const data = this.presets[this.preset_number].data;
+        if (!data || data.length < 1) return;
+        const hash = hashVcodBytes(extractVcodBytes(data));
+        if (!hash) return;
+        clearOverride(hash);
+        this.oscOverridesVersion++;
     }
 
     checkPreset(number) {
@@ -697,6 +777,8 @@ decorate(State, {
     lock: observable,
     read_progress: observable,
     error: observable,
+    oscOverridesVersion: observable,
+    taggingEnabled: observable,
     presetNull: computed,
     shortUrl: computed
 });

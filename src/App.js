@@ -67,8 +67,22 @@ import ControlRateSync from "./components/ControlRateSync";
 import {MidiSupportWarning} from "./components/MidiSupportWarning";
 import {WarningBanner} from "./components/WarningBanner";
 import { HelpModal } from './components/HelpModal';
+import { exportOverridesJson } from './utils/oscOverrides';
 
 const MIDI_MSG_TYPE = "sysex";
+
+const downloadOscOverrides = () => {
+    const blob = new Blob([exportOverridesJson()], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    a.href = url;
+    a.download = `microfreak-osc-overrides.${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
 
 const LAYOUT_2_COLS = 'layout-2-cols';
 const LAYOUT_1_ROW = 'layout-1-row';
@@ -78,7 +92,8 @@ class App extends Component {
 	state = {
     	theme: DEFAULT_THEME,
     	presets_pos: DEFAULT_PRESETS_POS,
-    	showHelpModal: false  
+    	tagging_enabled: true,
+    	showHelpModal: false
 };
 
     selectTheme = (e) => {
@@ -90,17 +105,26 @@ class App extends Component {
         this.setState({presets_pos: e.target.value});
         savePreferences({presets_pos: e.target.value});
     };
+    selectTagging = (e) => {
+        const enabled = e.target.value === 'on';
+        this.setState({tagging_enabled: enabled});
+        state.setTaggingEnabled(enabled);
+        savePreferences({tagging_enabled: enabled});
+    };
 	toggleHelpModal = () => {
     	this.setState({ showHelpModal: !this.state.showHelpModal });
 	};
     componentDidMount(){
         const s = loadPreferences();
+        const taggingEnabled = s.tagging_enabled !== false;
         this.setState({
             theme: s.theme || DEFAULT_THEME,
             presets_pos: s.presets_pos || DEFAULT_PRESETS_POS,
+            tagging_enabled: taggingEnabled,
         });
         // state.setPresetNumber(s.preset);
         state.send_pc = s.send_pc;
+        state.setTaggingEnabled(taggingEnabled);
     }
 
     // We need this method to have a correct "this" binding in state.importData()
@@ -133,6 +157,10 @@ class App extends Component {
                                 <option value="presets-grid-right">Presets list on the right</option>
                                 <option value="presets-grid-bottom">Presets list at bottom</option>
                                 <option value="presets-grid-none">No presets list</option>
+                            </select>
+                            <select value={this.state.tagging_enabled ? 'on' : 'off'} onChange={this.selectTagging}>
+                                <option value="on">OSC tagging on</option>
+                                <option value="off">OSC tagging off</option>
                             </select>
                         </div>
                     </div>
@@ -243,13 +271,21 @@ class App extends Component {
                                 <div>
                                     No guarantee is given as to the accuracy of the displayed data.
                                 </div>
-                               <div>
-   									 <button className="link-button" onClick={this.toggleHelpModal}>Read the quick guide</button>.
-   									 Report bugs and issues <a href="https://github.com/colinmreed/community-microfreak-reader/issues" className="link" target="_blank" rel="noopener noreferrer">here</a>.
-   									 <a href="https://coff.ee/colinmreed" className="link coffee-link" target="_blank" rel="noopener noreferrer">Buy me a coffee</a>.
-								</div>
+                                <div>
+                                    OSC Type shows "n.a." when the preset uses an older on-device
+                                    encoding we can't fully decode. To fix it, load the preset on
+                                    the MicroFreak and press Save — this rewrites it in the modern
+                                    encoding and the type will display correctly afterwards.
+                                    You can also pick the correct type from the dropdown in the
+                                    OSC section — your choice is saved locally and overrides the
+                                    decoded value.
+                                    {' '}
+                                    <button className="link-button" onClick={downloadOscOverrides}>
+                                        Export overrides
+                                    </button>
+                                </div>
                                 <div className="copyright">
-    								Community Edition v1.0.0
+    								Community Edition v2.0.0
 								</div>
                             </div>
                         </div>

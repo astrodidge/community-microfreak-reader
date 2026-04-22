@@ -22,6 +22,19 @@
     text-align: center;
 }
 
+.osc-sub-label {
+    font-size: 70%;
+    opacity: 0.6;
+    text-align: center;
+    margin-top: 6px;
+}
+
+.osc-mapped-value {
+    color: var(--knob-text);
+    white-space: pre-wrap;
+    text-align: center;
+}
+
 .arp-sync {
     margin-top: 16px;
     color: var(--knob-text);
@@ -36,4 +49,20 @@
 
 .control-off {
     opacity: 0.2;
+}
+
+.osc-type-select {
+    margin-top: 6px;
+    font-size: 80%;
+    background: var(--header-select-bg, transparent);
+    color: var(--knob-text);
+    border: 1px solid var(--knob-text);
+    border-radius: 3px;
+    padding: 1px 2px;
+    max-width: 110px;
+}
+
+.osc-type-select.osc-type-override {
+    border-color: var(--switch-sel-bg, #d08020);
+    font-style: italic;
 }

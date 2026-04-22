@@ -138,10 +138,12 @@ class PresetsGrid extends Component {
             if (S.presets.length && (S.presets.length > i && S.presets[i])) {
                 classname += ' loaded';
             }
+            const osc = S.presets[i] ? (S.oscTypeNameFor(i) || '') : '';
             pc.push(
                 <div key={i} className={classname} onClick={() => this.selectPreset(i)}>
                     <div className="g-i">{i+1}</div>
                     <div className="g-n">{S.presetName(i)}</div>
+                    <div className="g-o">{osc.replace(/\n/g, ' ')}</div>
                     <div className="g-c">{S.presetCat(i)}</div>
                 </div>
             );

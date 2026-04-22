@@ -1,6 +1,6 @@
 import React, {Component} from 'react';
 import {inject, observer} from "mobx-react";
-import {CONTROL, OSC_TYPE, OSC_WAVE, OSC_TIMBRE, OSC_SHAPE, FILTER_AMT, SWITCH, oscParamInfo, oscParamDisplay} from "../model";
+import {CONTROL, OSC_TYPE, OSC_WAVE, OSC_TIMBRE, OSC_SHAPE, FILTER_AMT, SWITCH, oscParamInfo, oscParamDisplay, OSC_TYPE_DISPLAY_ORDER, oscTypeName} from "../model";
 import "./Control.css";
 import Knob from "./Knob";
 import ControlMods from "./ControlMods";
@@ -11,6 +11,8 @@ const OSC_PARAM_KEY = {
     [OSC_TIMBRE]: 'timbre',
     [OSC_SHAPE]: 'shape'
 };
+
+const oscLabel = (name) => (name || '').replace(/\n/g, ' ');
 
 class Control extends Component {
 
@@ -55,7 +57,9 @@ class Control extends Component {
 
         let mapped;
         if (cc === OSC_TYPE) {
-            mapped = control.mapping ? control.mapping(v, S.fwVersion()) : '';
+            // currentOscTypeName() returns the user override if set, otherwise
+            // the decoded value — matches what the dropdown shows.
+            mapped = S.currentOscTypeName() || (control.mapping ? control.mapping(v, S.fwVersion()) : '');
         } else if (oscDisplay !== null) {
             mapped = oscDisplay;
         } else if (bipolarMapped !== null) {
@@ -73,11 +77,51 @@ class Control extends Component {
             // console.log("control", S.switchValue(SWITCH[fw][sw], raw), inverseSw, enabled);
         }
 
+        let oscDropdown = null;
+        if (cc === OSC_TYPE && S.taggingEnabled) {
+            const override = S.currentOscTypeOverride();
+            const data = S.presets[S.preset_number] && S.presets[S.preset_number].data;
+            const decoded = data ? oscTypeName(data, fw) : null;
+            const selectValue = override || "";
+            const autoLabel = decoded ? `(auto: ${oscLabel(decoded)})` : "(auto)";
+            const onChange = (e) => {
+                const val = e.target.value;
+                if (val === "") S.clearCurrentOscTypeOverride();
+                else S.setCurrentOscTypeOverride(val);
+            };
+            oscDropdown = (
+                <select
+                    className={`osc-type-select${override ? ' osc-type-override' : ''}`}
+                    value={selectValue}
+                    onChange={onChange}
+                >
+                    <option value="">{autoLabel}</option>
+                    {OSC_TYPE_DISPLAY_ORDER.map(name => (
+                        <option key={name} value={name}>{oscLabel(name)}</option>
+                    ))}
+                </select>
+            );
+        }
+
+        let oscMappedBlock = null;
+        if (cc === OSC_TYPE) {
+            const data = S.presets[S.preset_number] && S.presets[S.preset_number].data;
+            const autoDecoded = data ? (oscTypeName(data, fw) || 'n.a.') : '—';
+            oscMappedBlock = (
+                <div className="osc-name">
+                    <div className="osc-sub-label">mapped</div>
+                    <div className="osc-mapped-value">{oscLabel(autoDecoded)}</div>
+                </div>
+            );
+        }
+
         return (
             <div className={`control${cc === OSC_TYPE ? ' osc' : ''} ${enabled?'':'control-off'}`}>
                 <div className="ctrl-name">{displayName}</div>
                 {cc !== OSC_TYPE && <Knob value={v} decimals={1} />}
-                {cc === OSC_TYPE && <div className="osc-name">{mapped}</div>}
+                {cc === OSC_TYPE && oscMappedBlock}
+                {cc === OSC_TYPE && S.taggingEnabled && <div className="osc-sub-label">tagged</div>}
+                {cc === OSC_TYPE && oscDropdown}
                 {cc !== OSC_TYPE && <div className="ctrl-value">{mapped}</div>}
                 <ControlMods cc={cc} />
                 {this.props.group && <ControlModsAssign cc={cc} group={this.props.group}/>}

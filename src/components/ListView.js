@@ -1,6 +1,5 @@
 import React, {Component, Fragment} from "react";
 import {inject, observer} from "mobx-react";
-import {CONTROL, OSC_TYPE} from "../model";
 
 class ListView extends Component {
 
@@ -12,16 +11,13 @@ class ListView extends Component {
     render() {
 
         const S = this.props.state;
-        const fw = S.fwVersion();
-        const control = CONTROL[fw][OSC_TYPE];
 
         let num_presets = 0;
         const presets = [];
         for (let i=0; i<512; i++) {
             if (S.presetExists(i)) {
                 num_presets++;
-                const v = S.controlValue(control, true, i);
-                const mapped = control.mapping ? control.mapping(v, fw) : '';
+                const mapped = S.oscTypeNameFor(i) || '';
                 const n = S.presetName(i);
                 presets.push({
                     index: i,

@@ -4,11 +4,58 @@ import oscParamRanges from "./oscParamRanges.json";
 export const FW1 = 0;
 export const FW2 = 1;
 
+// OSC type names in firmware-introduction order (1-based when displayed but
+// 0-indexed here). Position N = the Nth OSC type added to MicroFreak firmware.
+// Used by oscTypeName() below.
+const OSC_TYPE_INTRO_ORDER_NAMES = [
+    "Basic\nWaves", "Superwave", "Wavetable", "Harmo", "Karplus\nStrong",
+    "V. Analog", "Waveshaper", "Two Op.\nFM", "Formant", "Chords",
+    "Speech", "Modal", "Noise", "Vocoder", "Bass",
+    "SawX", "Harm", "User\nWavetable", "Sample", "Scan\nGrains",
+    "Cloud\nGrains", "Hit\nGrains",
+];
+
 // Resolve the current osc type's NAME from the preset data blocks.
-// Uses marker-anchored read of '#VCODType' primary 16-bit value.
+//
+// Formula, verified against 65 user-tagged presets + 40 spot-checked from
+// the P385..P424 factory bank (100% match; the initially-flagged "miss" at
+// P6 Xoo0Ooo turned out to be a user tagging error — saturated + 0x16 maps
+// cleanly to Hit Grains):
+//
+//     vcodTag  = unpacked[marker + 10]    // also data[0][12], the fmt byte
+//     primary  = u16le(unpacked, marker + 11)
+//     idx      = round(primary × vcodTag / 32768)   [or vcodTag if saturated]
+//     type     = INTRO_ORDER[idx - 1]
+//
+// vcodTag turns out to be the number of OSC types the firmware knew when the
+// preset was saved — 12, 13, 14, 17, 18, 22 across firmware revisions — and
+// primary encodes intro-order idx scaled to (0..32768) in that firmware's
+// space. Saturated primary (0x7FFF) means "the last type in this firmware".
+// This explains the 1.5× duplicates we saw earlier: same type, different
+// firmware revision => different primary.
+//
+// User's personal dropdown overrides take priority over this and are applied
+// one level up in State.currentOscTypeName().
 export function oscTypeName(data, fw = FW2) {
-    const v = decodeOscType(data);
-    return _osc_type(v, fw);
+    if (!data || !data.length) return null;
+    // Marker always at unpacked offset 0; only need marker (9) + c (1) +
+    // tag (1) + primary-LSB/MSB (2) = 13 bytes. Unpack just enough so we
+    // don't churn through all 146 blocks for each preset-list render.
+    const unpacked = unpackMidi7bit(data, 16);
+    const at = findUnpackedMarker(unpacked, [0x23,0x56,0x43,0x4f,0x44,0x54,0x79,0x70,0x65]);
+    if (at < 0) return null;
+    const vcodTag = unpacked[at + 10];
+    const primary = unpacked[at + 11] | (unpacked[at + 12] << 8);
+    if (vcodTag < 1 || vcodTag > 22) return "n.a.";
+    let idx;
+    if (primary >= 0x7FFF) {
+        idx = vcodTag;
+    } else {
+        idx = Math.round(primary * vcodTag / 32768);
+        if (idx < 1) idx = 1;
+        if (idx > vcodTag) idx = vcodTag;
+    }
+    return OSC_TYPE_INTRO_ORDER_NAMES[idx - 1];
 }
 
 // Look up the per-osc-type info for one of the three OSC knobs.
@@ -153,11 +200,44 @@ const OSC_TYPE_TABLE = [
     [127, "Hit\nGrains"     ],  // 22
 ];
 
+// OSC-type names in the order the MicroFreak displays them on the knob —
+// used by the manual-override dropdown so users see the same order as on
+// the hardware. Matches OSC_TYPE_TABLE strings exactly (including '\n') so
+// overrides flow through the existing display pipeline.
+export const OSC_TYPE_DISPLAY_ORDER = [
+    "Basic\nWaves",
+    "Superwave",
+    "Wavetable",
+    "Harmo",
+    "Karplus\nStrong",
+    "V. Analog",
+    "Waveshaper",
+    "Two Op.\nFM",
+    "Formant",
+    "Chords",
+    "Speech",
+    "Modal",
+    "Noise",
+    "Bass",
+    "SawX",
+    "Harm",
+    "User\nWavetable",
+    "Sample",
+    "Scan\nGrains",
+    "Cloud\nGrains",
+    "Hit\nGrains",
+    "Vocoder",
+];
+
 const _osc_type = function (v, fw=FW2) {
     // v is the raw 7-bit byte at data[0][14]. Nearest-match against band
     // centers in OSC_TYPE_TABLE mirrors what MF displays when a stored
     // byte lies between two band centers.
     if (v == null || isNaN(v)) return "?";
+    // Byte = 0x7F means the '#VCODType' primary 16-bit saturated at 0x7FFF.
+    // MF decodes these via a legacy fallback we can't reverse-engineer —
+    // show "n.a." instead of guessing (see CLAUDE.md, followups §OSC_TYPE).
+    if (v === 0x7F) return "n.a.";
     let best = OSC_TYPE_TABLE[0], bestDist = Infinity;
     for (const [center, name] of OSC_TYPE_TABLE) {
         const d = Math.abs(v - center);
@@ -607,11 +687,19 @@ export const MOD_ASSIGN_SLOT = {
 // a single @#Co1 marker anchors the region, destinations are 45 bytes apart,
 // and each cell is a signed 16-bit little-endian value in the last 2 bytes
 // of an 8-byte source row.
-export function unpackMidi7bit(data) {
+// Optional `maxBytes` stops unpacking once that many output bytes are
+// produced — lets callers that only need the preset's leading bytes avoid
+// processing all 146 blocks. The bytes produced are identical to the full
+// unpack for any prefix length, so this is a pure perf optimisation.
+export function unpackMidi7bit(data, maxBytes = Infinity) {
+    const packedNeeded = isFinite(maxBytes) ? Math.ceil(maxBytes / 7) * 8 : Infinity;
     const flat = [];
-    for (let b = 0; b < data.length; b++) {
+    outer: for (let b = 0; b < data.length; b++) {
         const block = data[b];
-        for (let i = 0; i < block.length; i++) flat.push(block[i]);
+        for (let i = 0; i < block.length; i++) {
+            flat.push(block[i]);
+            if (flat.length >= packedNeeded) break outer;
+        }
     }
     const out = [];
     for (let i = 0; i < flat.length; i += 8) {
@@ -620,6 +708,7 @@ export function unpackMidi7bit(data) {
         for (let k = i + 1; k < end; k++) {
             const bit = (flag >> (k - i - 1)) & 1;
             out.push((bit << 7) | flat[k]);
+            if (out.length >= maxBytes) return out;
         }
     }
     return out;
