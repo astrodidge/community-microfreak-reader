@@ -1,6 +1,7 @@
 import React, {Component} from 'react';
 import {inject, observer} from "mobx-react";
 import {CONTROL, OSC_TYPE, OSC_WAVE, OSC_TIMBRE, OSC_SHAPE, FILTER_AMT, SWITCH, oscParamInfo, oscParamDisplay, OSC_TYPE_DISPLAY_ORDER, oscTypeName} from "../model";
+import {SAMPLE_NAMES, oscTypeUsesSample} from "../model/samples";
 import "./Control.css";
 import Knob from "./Knob";
 import ControlMods from "./ControlMods";
@@ -104,6 +105,8 @@ class Control extends Component {
         }
 
         let oscMappedBlock = null;
+        let sampleMappedBlock = null;
+        let sampleDropdown = null;
         if (cc === OSC_TYPE) {
             const data = S.presets[S.preset_number] && S.presets[S.preset_number].data;
             const autoDecoded = data ? (oscTypeName(data, fw) || 'n.a.') : '—';
@@ -113,6 +116,50 @@ class Control extends Component {
                     <div className="osc-mapped-value">{oscLabel(autoDecoded)}</div>
                 </div>
             );
+
+            // Effective type (override or auto) decides whether the sample
+            // sub-type section is relevant at all.
+            const effectiveType = S.currentOscTypeName() || autoDecoded;
+            const sampleRelevant = data && oscTypeUsesSample(effectiveType);
+
+            if (sampleRelevant) {
+                // "mapped" — always shown from the auto-decoder, even with
+                // tagging off. Formula is verified (16/16 tagged match).
+                const decoded = S.currentSampleDecoded();
+                const decodedLabel = decoded ? `${decoded.idx}. ${decoded.name || ''}` : '—';
+                sampleMappedBlock = (
+                    <div className="osc-name">
+                        <div className="osc-sub-label">sample</div>
+                        <div className="osc-mapped-value">{decodedLabel}</div>
+                    </div>
+                );
+            }
+
+            if (sampleRelevant && S.taggingEnabled) {
+                const current = S.currentSampleOverride();
+                const currentIdx = current ? current.sampleIdx : null;
+                const onSampleChange = (e) => {
+                    const val = e.target.value;
+                    if (val === "") {
+                        S.clearCurrentSampleOverride();
+                    } else {
+                        const idx = parseInt(val, 10);
+                        S.setCurrentSampleOverride(SAMPLE_NAMES[idx - 1], idx);
+                    }
+                };
+                sampleDropdown = (
+                    <select
+                        className={`osc-type-select${currentIdx ? ' osc-type-override' : ''}`}
+                        value={currentIdx || ""}
+                        onChange={onSampleChange}
+                    >
+                        <option value="">(not tagged)</option>
+                        {SAMPLE_NAMES.map((name, i) => (
+                            <option key={i + 1} value={i + 1}>{`${i + 1}. ${name}`}</option>
+                        ))}
+                    </select>
+                );
+            }
         }
 
         return (
@@ -122,6 +169,9 @@ class Control extends Component {
                 {cc === OSC_TYPE && oscMappedBlock}
                 {cc === OSC_TYPE && S.taggingEnabled && <div className="osc-sub-label">tagged</div>}
                 {cc === OSC_TYPE && oscDropdown}
+                {cc === OSC_TYPE && sampleMappedBlock}
+                {cc === OSC_TYPE && sampleDropdown && <div className="osc-sub-label">tagged sample</div>}
+                {cc === OSC_TYPE && sampleDropdown}
                 {cc !== OSC_TYPE && <div className="ctrl-value">{mapped}</div>}
                 <ControlMods cc={cc} />
                 {this.props.group && <ControlModsAssign cc={cc} group={this.props.group}/>}

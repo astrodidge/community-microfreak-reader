@@ -19,8 +19,10 @@ import {
     MOD_SRC_PRESS,
     MOD_SRC_LFO,
     MOD_SRC_ENV, FW1, FW2, CATEGORY,
-    oscTypeName
+    oscTypeName,
+    decodeSampleIdx
 } from "../model";
+import {sampleNameFromIdx} from "../model/samples";
 import {MSG_DATA, MSG_NAME, portById} from "../utils/midi";
 import {h, hs} from "../utils/hexstring";
 import {compressToEncodedURIComponent, decompressFromEncodedURIComponent} from "lz-string";
@@ -28,10 +30,11 @@ import axios from "axios";
 import {getParameterByName} from "../utils/sharing";
 import {
     extractVcodBytes,
+    extractExtendedBytes,
     hashVcodBytes,
     getOverride,
     setOverride,
-    clearOverride,
+    clearOverrideFields,
     loadOverrides
 } from "../utils/oscOverrides";
 
@@ -184,7 +187,7 @@ class State {
         const bytes = extractVcodBytes(data);
         const hash = hashVcodBytes(bytes);
         if (!hash) return;
-        setOverride(hash, oscType, bytes, preset.name || "");
+        setOverride(hash, { oscType, vcodBytes: bytes, presetName: preset.name || "" });
         this.oscOverridesVersion++;
     }
 
@@ -194,7 +197,66 @@ class State {
         if (!data || data.length < 1) return;
         const hash = hashVcodBytes(extractVcodBytes(data));
         if (!hash) return;
-        clearOverride(hash);
+        clearOverrideFields(hash, ["oscType"]);
+        this.oscOverridesVersion++;
+    }
+
+    // Auto-decoded sample for the current preset — { idx, name } or null.
+    // Independent of user override; the UI shows both ("mapped" vs "tagged").
+    currentSampleDecoded() {
+        if (!this.presets.length || !this.presets[this.preset_number]) return null;
+        const data = this.presets[this.preset_number].data;
+        if (!data || data.length < 1) return null;
+        const idx = decodeSampleIdx(data);
+        if (idx == null) return null;
+        return { idx, name: sampleNameFromIdx(idx) };
+    }
+
+    // Return the user-set sample sub-type override for the current preset,
+    // or null if none. Sample tagging is independent of OSC-type tagging:
+    // the sample is only meaningful when the OSC type is Sample/Scan Grains/
+    // Cloud Grains/Hit Grains, but we don't enforce that here — the UI hides
+    // the dropdown when irrelevant.
+    currentSampleOverride() {
+        if (!this.taggingEnabled) return null;
+        if (!this.presets.length || !this.presets[this.preset_number]) return null;
+        const data = this.presets[this.preset_number].data;
+        if (!data || data.length < 1) return null;
+        // eslint-disable-next-line no-unused-expressions
+        this.oscOverridesVersion;
+        const hash = hashVcodBytes(extractVcodBytes(data));
+        if (!hash) return null;
+        const entry = getOverride(hash);
+        if (!entry || entry.sampleIdx == null) return null;
+        return { sample: entry.sample, sampleIdx: entry.sampleIdx };
+    }
+
+    setCurrentSampleOverride(sample, sampleIdx) {
+        if (!this.presets.length || !this.presets[this.preset_number]) return;
+        const preset = this.presets[this.preset_number];
+        const data = preset.data;
+        if (!data || data.length < 1) return;
+        const bytes = extractVcodBytes(data);
+        const hash = hashVcodBytes(bytes);
+        if (!hash) return;
+        const extendedBytes = extractExtendedBytes(data);
+        setOverride(hash, {
+            sample,
+            sampleIdx,
+            vcodBytes: bytes,
+            extendedBytes,
+            presetName: preset.name || "",
+        });
+        this.oscOverridesVersion++;
+    }
+
+    clearCurrentSampleOverride() {
+        if (!this.presets.length || !this.presets[this.preset_number]) return;
+        const data = this.presets[this.preset_number].data;
+        if (!data || data.length < 1) return;
+        const hash = hashVcodBytes(extractVcodBytes(data));
+        if (!hash) return;
+        clearOverrideFields(hash, ["sample", "sampleIdx", "extendedBytes"]);
         this.oscOverridesVersion++;
     }
 

@@ -101,8 +101,47 @@ Items still open:
   `FParam1/2/3` in the `#VCODType` section. Verified equivalent to the
   hardcoded `[0][26/27]` / `[1][6/7]` / `[1][19/20]` positions for all
   fmts in the user's dump.
+- **OSC Type universal formula (RE-46 "Martin's Delight")**: the RE-44
+  empirical 22-band table was superseded. `data[0][12]` (fmt byte, also
+  `unpacked[vcod+10]`) equals the **count of OSC types the firmware
+  knew at save time**: 12 → 13 → 14 → 17 → 18 → 22 across firmware
+  revisions. Primary-16 encodes the intro-order idx scaled into that
+  range: `idx = round(primary × vcodTag / 32768)`, saturated (0x7FFF)
+  means the top type in this firmware. 100 % match on 65 user-tagged
+  presets + 40 spot-checked. Discovery path was data-driven: a tagging
+  dropdown in the OSC section let the user label 65 presets while
+  playing, then 20 minutes of Python analysis surfaced the formula.
+- **Sample sub-type (RE-47)**: the 4 sample-using OSC types store their
+  loaded sample in sub-marker `FSmpIdx` inside `#VCODType`. The 16-bit
+  LE value is `(sampleIdx - 1) × 258` (MSB = idx-1, LSB = 2×MSB). 16/16
+  match on user-tagged presets. `decodeSampleIdx()` + factory sample
+  list in `src/model/samples.js`.
 - **AMP_MOD**: location unclear; not yet migrated. Visible in UI but
   correctness not verified by user.
+
+## Tooling: override tagging + export pipeline (RE-46/47 era)
+
+The path to RE-46 and RE-47 used a data-driven pipeline worth preserving:
+
+1. **Dropdown in the OSC section** (`src/components/Control.js`) lets the
+   user tag the correct OSC type and (conditionally) the correct sample.
+2. Each tag is persisted to `localStorage` under
+   `studiocode.microfreak.osc_overrides`, keyed by a hash of the
+   `#VCODType` bytes (see `src/utils/oscOverrides.js`). Alongside the
+   label, the **raw bytes** are stored — `vcodBytes` (128-byte VCODType
+   window) for OSC-type tags, `extendedBytes` (1024-byte unpacked prefix)
+   for sample tags.
+3. **Export overrides** button in the bottom-right instructions block
+   dumps the whole map as JSON.
+4. **Python analysers** in `reverse-engineering/` run pattern / purity
+   / monotonic-correlation scans on the exported JSON. Typical workflow:
+   user tags 15–60 examples → export → `analyse_*.py` → formula falls
+   out in minutes. Much faster than analytical RE.
+
+**When to use this pipeline:** any parameter whose encoding resists
+hypothesis-driven walks. Set up a narrow-scope dropdown, ship it, let
+the user tag while playing, analyse the export. Keep the raw-bytes
+window wide when you don't yet know where the signal lives.
 
 ## 1. Logarithmic scaling for time/frequency knobs
 

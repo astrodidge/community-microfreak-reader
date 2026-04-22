@@ -831,6 +831,7 @@ const SUB_ERANGE   = [0x45,0x52,0x61,0x6e,0x67,0x65];                     // 'ER
 const SUB_FPARAM1  = [0x46,0x50,0x61,0x72,0x61,0x6d,0x31];                // 'FParam1' (OSC Wave)
 const SUB_FPARAM2  = [0x46,0x50,0x61,0x72,0x61,0x6d,0x32];                // 'FParam2' (OSC Timbre)
 const SUB_FPARAM3  = [0x46,0x50,0x61,0x72,0x61,0x6d,0x33];                // 'FParam3' (OSC Shape)
+const SUB_FSMPIDX  = [0x46,0x53,0x6d,0x70,0x49,0x64,0x78];                // 'FSmpIdx' (Sample index, SHIFT+TYPE)
 
 // LFO decoders.
 export function decodeLfoShape(data)    { return readSectionParam(data, LFO_SECTION, null);      }
@@ -907,6 +908,19 @@ export function decodeOscType(data) {
 export function decodeOscWave(data)   { return readSectionParam(data, VCOD_SECTION, SUB_FPARAM1); }
 export function decodeOscTimbre(data) { return readSectionParam(data, VCOD_SECTION, SUB_FPARAM2); }
 export function decodeOscShape(data)  { return readSectionParam(data, VCOD_SECTION, SUB_FPARAM3); }
+
+// Sample sub-type (SHIFT+TYPE knob on the hardware). Stored under the
+// 'FSmpIdx' sub-marker inside '#VCODType'. The 16-bit LE value is always
+// `(idx - 1) × 258` — MSB alone == idx-1, LSB == 2×MSB (and u16 = 258×MSB).
+// Why 258 = 0x0102? Unknown, but 16/16 tagged presets matched exactly.
+// Returns the 1-based sample slot (1..52 factory, higher = user bank) or
+// null if the marker isn't present (non-sample OSC types skip this field).
+// Verified against 16 user-tagged presets, 2026-04-22.
+export function decodeSampleIdx(data) {
+    const u16 = readSectionParam(data, VCOD_SECTION, SUB_FSMPIDX);
+    if (u16 == null) return null;
+    return Math.round(u16 / 258) + 1;
+}
 
 export function decodeModMatrixFW2(data, src, dest) {
     const s = MOD_MATRIX_FW2_SRC_INDEX.get(src);

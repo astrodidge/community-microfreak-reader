@@ -17,7 +17,7 @@
     "Bass":            { "wave": { "name": "Saturate",  "range": [0, 100] }, "timbre": { "name": "Fold",      "range": [0, 100] }, "shape": { "name": "Noise",     "range": [0, 100] } },
     "SawX":            { "wave": { "name": "SawMode",   "range": [0, 100] }, "timbre": { "name": "Shape",     "range": [0, 100] }, "shape": { "name": "Noise",     "range": [0, 100] } },
     "Harm":            { "wave": { "name": "Spread",    "range": [0, 100] }, "timbre": { "name": "Rectify",   "range": [0, 100] }, "shape": { "name": "Noise",     "range": [0, 100] } },
-    "User Wavetable":  { "wave": { "name": "Table",     "range": [0, 10]  }, "timbre": { "name": "Position",  "range": [0, 100] }, "shape": { "name": "BitDepth",  "range": [0, 100] } },
+    "User Wavetable":  { "wave": { "name": "Table",     "values": ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16"] }, "timbre": { "name": "Position",  "range": [0, 100] }, "shape": { "name": "BitDepth",  "range": [0, 100] } },
     "Sample":          { "wave": { "name": "Start",     "range": [0, 100] }, "timbre": { "name": "Length",    "range": [0, 100] }, "shape": { "name": "Loop",      "range": [0, 100] } },
     "Scan Grains":     { "wave": { "name": "Start",     "range": [0, 100] }, "timbre": { "name": "Density",   "range": [0, 100] }, "shape": { "name": "Chaos",     "range": [0, 100] } },
     "Cloud Grains":    { "wave": { "name": "Start",     "range": [0, 100] }, "timbre": { "name": "Density",   "range": [0, 100] }, "shape": { "name": "Chaos",     "range": [0, 100] } },

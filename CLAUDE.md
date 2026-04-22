@@ -40,15 +40,32 @@ Community fork of MicroFreak Reader — a React/Electron app for reading and dis
   Since RE-32..RE-45 the model reads are fully **marker-anchored** (search
   for ASCII markers like `@#LFOEShape`, `@#VCFDType`, `#VCODType`, etc. in
   the unpacked stream) — this makes reads robust across all fmts.
-- **OSC Type has a legacy-encoding blind spot.** `#VCODType` primary 16-bit
-  value maps linearly to 22 OSC types (index/22 × 32767) for ~59 % of
-  presets. For the remaining ~41 % the primary saturates to `0x7FFF` and
-  MF uses internal legacy-fallback logic we can't reverse-engineer without
-  firmware access (the MF re-encodes the whole preset on save, so a walk
-  can never capture the pre-save legacy encoding). User workaround: load
-  the factory preset on MF and press Save — rewrites the encoding to the
-  modern form, after which the app decodes it correctly. See
-  `reverse-engineering/followups.md` for the full investigation.
+- **OSC Type: firmware-count formula (RE-46).** `data[0][12]` (the fmt
+  byte, also `unpacked[vcod_marker+10]`) equals the **number of OSC
+  types the firmware knew at save time**: 12 → 13 → 14 → 17 → 18 → 22
+  across firmware revisions. The primary 16-bit value at `#VCODType`
+  encodes the intro-order index scaled into that firmware's range:
+
+      idx = round(primary × vcodTag / 32768)    [or vcodTag if saturated]
+      type = INTRO_ORDER[idx - 1]
+
+  Saturated primary (0x7FFF) means "the last type in this firmware".
+  100 % match across 65 user-tagged + 40 spot-checked presets. See
+  `src/model/index.js` `oscTypeName()`.
+- **Sample sub-type (RE-47).** The 4 sample-using OSC types (Sample /
+  Scan Grains / Cloud Grains / Hit Grains) store the selected sample in
+  sub-marker `FSmpIdx` inside `#VCODType`, same `<marker>c<tag><LSB><MSB>`
+  layout as `FParam1/2/3`. The 16-bit LE value is always
+  `(idx - 1) × 258` — MSB alone = idx-1. `decodeSampleIdx()` in
+  `src/model/index.js`. Factory sample names in `src/model/samples.js`.
+- **Tagging UI & override store.** `src/components/Control.js` renders a
+  dropdown in the OSC section letting the user tag the correct OSC type
+  and (for sample-using types) the correct sample. Overrides persist to
+  localStorage keyed by a hash of the `#VCODType` bytes; user overrides
+  always beat the decoded value. An "OSC tagging on/off" toggle in the
+  header disables the override-lookup path entirely for perf. Export
+  button dumps the full JSON (bytes + labels) for pattern analysis —
+  this pipeline is what cracked RE-46 and RE-47.
 
 ## How the Build Tooling Works
 
