@@ -914,12 +914,20 @@ export function decodeAssignSlot(data, slot) {
 }
 
 // Sequence A step decoder. Anchored after the @#VocGHissModc section
-// (the last named section before the step records). Layout per step:
-//   <note:1B> FF FF FF <var:1B> 00 00 00 00 00 00 00 01 00 00 00
-// where var is likely velocity / gate / slide (not yet decoded). Step
-// records start after a region of 0xFF padding. Reading stops when the
-// note byte is 0xFF (= empty / end-of-sequence sentinel).
+// (the last named section before the step records). Layout per step
+// (16 bytes):
+//   <note:1B> FF FF FF <v4:1B> 00 00 00 00 00 00 00 <state:1B> 00 00 00
+// where:
+//   - note is a MIDI note number (0..127), or 0xFF when no note plays
+//   - state at byte 12: 0x01 = On (new attack), 0x02 = Tie (extends prev),
+//     0x00 = Off (rest)
+//   - v4 at byte 4 is unknown — likely velocity, gate, or slide. Not
+//     yet decoded; passed through as v4 for future use.
+// Off steps look identical byte-for-byte to end-of-sequence padding,
+// so the decoder always returns the full 64-slot grid (the MF's max
+// sequence length) and lets the caller decide what to do with each.
 const VOC_HISS_MARKER = [0x40,0x23,0x56,0x6f,0x63,0x47,0x48,0x69,0x73,0x73,0x4d,0x6f,0x64]; // '@#VocGHissMod'
+const SEQ_STEPS = 64;
 
 export function decodeSequence(data) {
     const unpacked = unpackMidi7bit(data);
@@ -945,20 +953,22 @@ export function decodeSequence(data) {
     if (padStart < 0) return null;
     i = padStart;
     while (i < unpacked.length && unpacked[i] === 0xFF) i++;
-    // First non-FF byte is the note of step 1.
+    // Read exactly SEQ_STEPS records; let the caller interpret state.
     const steps = [];
-    while (i + 16 <= unpacked.length) {
-        const note = unpacked[i];
-        if (note === 0xFF) break;       // end of sequence
-        if (note > 127) break;          // sanity
+    for (let s = 0; s < SEQ_STEPS; s++) {
+        const off = i + s * 16;
+        if (off + 16 > unpacked.length) break;
+        const stateByte = unpacked[off + 12];
+        const state = stateByte === 0x01 ? 'on'
+                    : stateByte === 0x02 ? 'tie'
+                    : 'off';
         steps.push({
-            note,
-            v4: unpacked[i + 4],        // unknown — likely velocity / gate
+            note: unpacked[off],
+            state,
+            v4: unpacked[off + 4],
         });
-        i += 16;
-        if (steps.length > 64) break;   // safety
     }
-    return steps.length > 0 ? steps : null;
+    return steps.length === SEQ_STEPS ? steps : null;
 }
 
 // OSC Type: single 7-bit byte at data[0][14]. The #VCODType section is

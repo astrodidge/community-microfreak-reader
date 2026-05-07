@@ -48,16 +48,54 @@ export function buildSequenceMidi(steps, opts = {}) {
     evs.push(...vlq(0), 0xFF, 0x51, 0x03,
         (usPerQuarter >> 16) & 0xFF, (usPerQuarter >> 8) & 0xFF, usPerQuarter & 0xFF);
 
-    // Notes — back-to-back, one step each. Note-on (delta=0) then note-off
-    // (delta=stepTicks). Skipping rests for now (treat all stored notes as
-    // active; the MF "step active" flag is byte 12 = 0x01 in our decoder
-    // and we only emit steps that decoded with a valid note).
+    // Walk the 64-step grid:
+    //   on  -> close any held note, emit note-on, hold for 1 step
+    //   tie -> extend the held note's gate by 1 step (no new attack)
+    //   off -> close any held note, advance time by 1 step (rest)
+    // Time accumulates as `pendingDelta` (ticks since the last emitted
+    // event) so consecutive rests / ties just sum into the next event's
+    // delta-time without emitting anything in between.
+    let heldNote = -1;       // MIDI note currently held, or -1 if none
+    let pendingDelta = 0;    // ticks since last emitted event
+    const closeHeld = () => {
+        if (heldNote >= 0) {
+            evs.push(...vlq(pendingDelta), 0x80, heldNote & 0x7F, 0);
+            pendingDelta = 0;
+            heldNote = -1;
+        }
+    };
     for (let i = 0; i < steps.length; i++) {
-        const note = steps[i].note;
-        const vel = steps[i].velocity || velocity;
-        evs.push(...vlq(0), 0x90, note & 0x7F, vel & 0x7F);          // note-on ch 1
-        evs.push(...vlq(stepTicks), 0x80, note & 0x7F, 0);           // note-off
+        const s = steps[i];
+        if (s.state === 'on') {
+            closeHeld();
+            const note = s.note & 0x7F;
+            const vel = (s.velocity || velocity) & 0x7F;
+            evs.push(...vlq(pendingDelta), 0x90, note, vel);
+            pendingDelta = stepTicks;
+            heldNote = note;
+        } else if (s.state === 'tie') {
+            if (heldNote >= 0) {
+                pendingDelta += stepTicks;     // extend the held note's gate
+            } else if ((s.note & 0xFF) <= 127) {
+                // Tie at the start (or after a rest) with no held note —
+                // play the tie's own note. The MF likely treats this as
+                // a continuation from the loop's previous pass; in a
+                // one-shot MIDI export we just let it sound.
+                const note = s.note & 0x7F;
+                const vel = (s.velocity || velocity) & 0x7F;
+                evs.push(...vlq(pendingDelta), 0x90, note, vel);
+                pendingDelta = stepTicks;
+                heldNote = note;
+            } else {
+                pendingDelta += stepTicks;     // tie with no note byte — rest
+            }
+        } else {
+            // off / rest
+            closeHeld();
+            pendingDelta += stepTicks;
+        }
     }
+    closeHeld();
 
     // Meta: end of track
     evs.push(...vlq(0), 0xFF, 0x2F, 0x00);

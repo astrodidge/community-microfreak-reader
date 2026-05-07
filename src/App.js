@@ -274,20 +274,16 @@ class App extends Component {
                                     No guarantee is given as to the accuracy of the displayed data.
                                 </div>
                                 <div>
-                                    OSC Type shows "n.a." when the preset uses an older on-device
-                                    encoding we can't fully decode. To fix it, load the preset on
-                                    the MicroFreak and press Save — this rewrites it in the modern
-                                    encoding and the type will display correctly afterwards.
-                                    You can also pick the correct type from the dropdown in the
-                                    OSC section — your choice is saved locally and overrides the
-                                    decoded value.
-                                    {' '}
-                                    <button className="link-button" onClick={downloadOscOverrides}>
-                                        Export overrides
-                                    </button>
+                                    In order to make sure that "sample" and "midi steps" are
+                                    correct, please save the preset. This makes sure that the
+                                    data is re-arranged in MF in the new format.
                                 </div>
                                 <div className="copyright">
     								Community Edition v2.0.0
+    								{' · '}
+    								<button className="link-button" onClick={downloadOscOverrides} title="Export OSC-type tagging data as JSON (for reverse-engineering analysis)">
+    									Export overrides
+    								</button>
 								</div>
                             </div>
                         </div>

@@ -25,10 +25,18 @@ class SequenceDownload extends Component {
         if (!preset || !preset.data || !preset.data.length) return null;
         const steps = decodeSequence(preset.data);
         if (!steps || !steps.length) return null;
+        // n = 1-based index of the last step whose state is 'on'.
+        // 0 means the sequence has no notes (all-off / all-tie pattern,
+        // not playable as MIDI) — hide the button entirely in that case.
+        let n = 0;
+        for (let i = 0; i < steps.length; i++) {
+            if (steps[i].state === 'on') n = i + 1;
+        }
+        if (n === 0) return null;
         return (
             <button className="button-midi" onClick={this.onClick}
-                    title={`Download seq A (${steps.length} steps) as a .mid file`}>
-                ⬇ MIDI ({steps.length} steps)
+                    title={`Download seq A as a .mid file — last on-step is step ${n}`}>
+                ⬇ MIDI ({n} notes)
             </button>
         );
     }
