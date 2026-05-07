@@ -17,7 +17,8 @@ export const wait = ms => new Promise(r => setTimeout(r, ms));
 
 // The MF answer within 2ms typically.
 export const WAIT_BETWEEN_MESSAGES = 15;    // empiric value with some margin
-export const MESSAGES_TO_READ_FOR_PRESET = 40;  // we don't need to read a full and complete dump
+export const MESSAGES_TO_READ_FOR_PRESET = 40;  // shallow default — fast browsing; mod-matrix amounts and seq data live past block 40
+export const MESSAGES_FOR_DEEP_READ = 146;      // full preset — needed for sequencer download + complete mod-matrix amounts
 
 // type of last received message:
 export const MSG_NAME = 1;
@@ -124,7 +125,7 @@ function sendPresetRequestData(presetNumber) {
     }
 }
 
-export async function readPreset(presetNumber = -1) {
+export async function readPreset(presetNumber = -1, deep = false) {
 
     if (!state.hasInputAndOutputEnabled()) {
         if (global.dev) console.log("readPreset: no output and/or input connected, ignore request");
@@ -156,8 +157,7 @@ export async function readPreset(presetNumber = -1) {
     sendPresetRequest(state.preset_number_comm);
     await wait(WAIT_BETWEEN_MESSAGES);
 
-    // const N = 146;
-    const N = MESSAGES_TO_READ_FOR_PRESET;
+    const N = deep ? MESSAGES_FOR_DEEP_READ : MESSAGES_TO_READ_FOR_PRESET;
 
     state.lock = true;
     state.read_progress = 0;

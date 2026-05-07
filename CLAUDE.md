@@ -36,10 +36,18 @@ Community fork of MicroFreak Reader — a React/Electron app for reading and dis
   `MOD_ASSIGN_SLOT[FW1/FW2]` packed-position table only worked on fmt
   0x16/0x0D — on 0x12 it read into the marker text (`'GAssign...'`),
   returning ASCII garbage and hiding the mod target entirely.
-- **Presets have 146 data blocks of 32 bytes each** (≈ 4.6 KB total), but
-  the legacy code only reads the first 40 blocks (`MESSAGES_TO_READ_FOR_PRESET`
-  in `src/utils/midi.js`). Mod-matrix amounts live in blocks beyond 40 —
-  reading only 40 blocks will miss them.
+- **Presets have 146 data blocks of 32 bytes each** (≈ 4.6 KB total).
+  Two read modes via `readPreset(presetNumber, deep)` in
+  `src/utils/midi.js`:
+  - **shallow (default, 40 blocks)** — `MESSAGES_TO_READ_FOR_PRESET`,
+    ~0.6s/preset. Used by READ, "Read all", "Read #N..512", auto-reads.
+    Captures everything up to mid-preset; misses full mod-matrix amounts
+    (which live past block 40) and **all** sequencer step data
+    (offset ~1980 in unpacked stream → block ~70).
+  - **deep (146 blocks)** — `MESSAGES_FOR_DEEP_READ`, ~2.2s/preset.
+    Triggered manually by the per-preset "DEEP READ" button. Required
+    for the seq-A MIDI download feature and complete mod-matrix amounts.
+    Not used in batch reads (would 4× the "Read all 512" duration).
 - **Factory vs user preset format differs substantially.** Saving a factory
   preset to a user slot re-serialises it (blocks differ byte-for-byte).
   `data[0][12]` is a format marker — seven values seen in the wild:

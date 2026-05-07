@@ -81,6 +81,18 @@ class PresetSelector extends Component {
         }
     };
 
+    deepReadSelected = async () => {
+        if (!this.props.state.hasInputAndOutputEnabled()) {
+            if (global.dev) console.log("deepReadSelected: no output and/or input connected, ignore request");
+            return;
+        }
+        this.props.state.error = 0;
+        if (!await readPreset(-1, true)) {
+            if (global.dev) console.warn("deep read preset fail");
+            this.props.state.error = 1;
+        }
+    };
+
     readAll = async (from=0, to=511, unread_only=false) => {
 
         if (!this.props.state.hasInputAndOutputEnabled()) {
@@ -548,6 +560,7 @@ class PresetSelector extends Component {
                 </div>
                 <div className="actions">
                     <button className={midi_ok ? "button-midi read-button ok" : "button-midi read-button"} type="button" onClick={this.readSelected}>READ preset #{S.preset_number_string}</button>
+                    <button className="button-midi" type="button" onClick={this.deepReadSelected} title="Read all 146 blocks of this preset (slower, ~2.2s) — needed for sequencer download and full mod-matrix amounts">DEEP READ #{S.preset_number_string}</button>
                     {!this.state.reading_all && <button className="button-midi" onClick={this.read1To512} title="Read all">Read all</button>}
                     {!this.state.reading_all && <button className="button-midi" onClick={this.readNTo512} title={`Read from #${S.preset_number_string} to 512`}>Read #{S.preset_number_string}..512</button>}
                     {this.state.reading_all && <button className="button-midi abort" onClick={this.abortAll} title="Stop reading all">{this.state.abort_all ? "Stopping..." : "STOP"}</button>}

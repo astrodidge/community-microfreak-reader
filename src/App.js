@@ -64,6 +64,7 @@ import {
 import PresetsGrid from "./components/PresetsGrid";
 import WindowTitle from "./components/WindowTitle";
 import ControlRateSync from "./components/ControlRateSync";
+import SequenceDownload from "./components/SequenceDownload";
 import {MidiSupportWarning} from "./components/MidiSupportWarning";
 import {WarningBanner} from "./components/WarningBanner";
 import { HelpModal } from './components/HelpModal';
@@ -224,6 +225,7 @@ class App extends Component {
                                     <Control cc={ARP_SEQ_SWING} />
                                     <Control cc={SPICE}/>
                                 </div>
+                                <SequenceDownload />
                             </div>
                             <div className="group lfo">
                                 <h3>LFO</h3>

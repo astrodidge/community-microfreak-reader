@@ -128,6 +128,30 @@ Items still open:
   the 3 `0x7F` Init slots have no marker and decoder returns null
   cleanly. `decodeAssignSlot()` in `src/model/index.js`; wired via
   `State.modAssignDest()` and `State.modAssignControlNum()`.
+- **Sequence A note decoding (RE-49)**: 32 of 32 expected notes
+  decoded one-shot off preset 478 (a programmed 32-step seq). Step
+  records are anchored to the long 0xFF padding region that follows
+  `@#VocGHissModc` (the last named section before the step data). 16
+  bytes per step record; layout:
+  `<note:1B> FF FF FF <v4:1B> 00 00 00 00 00 00 00 01 00 00 00`.
+  Reading stops when note byte is 0xFF (= empty step / sentinel). The
+  pad-region anchor uses a "first run of ≥50 consecutive 0xFF bytes"
+  rule — naive "first FF" doesn't work because the GHissVol sub-value
+  inside VocGHissMod itself contains an 0xFF byte. `decodeSequence()`
+  in `src/model/index.js`; SMF generator in `src/utils/midiFile.js`;
+  Download MIDI button in `src/components/SequenceDownload.js`. The
+  React app's `MESSAGES_TO_READ_FOR_PRESET = 40` truncates the read
+  before the seq data starts (block ~70), so a "DEEP READ" button
+  was added (146 blocks, ~2.2s) to fetch enough for seq decoding.
+  Open items: byte 4 per step is unknown — most likely **velocity**
+  (range 0x01–0x26 in P478) or **gate length** or **slide amount**;
+  byte 12 is `0x01` for every active step, almost certainly a "step
+  active / not muted" flag. Bytes 1-3 (`FF FF FF`) and 5-11/13-15
+  (zeros) probably reserved for the 4 per-step modulation tracks the
+  MF supports (currently empty in the test preset). No `@#SyB` /
+  `@#SyC` / `@#SyD` markers found — either MF stores all 4 patterns
+  under one header in repeated blocks, or empty patterns get culled.
+  Need a preset with multiple non-empty sequences to disambiguate.
 - **AMP_MOD**: location unclear; not yet migrated. Visible in UI but
   correctness not verified by user.
 

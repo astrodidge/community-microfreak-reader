@@ -913,6 +913,54 @@ export function decodeAssignSlot(data, slot) {
     return { control, modGroup };
 }
 
+// Sequence A step decoder. Anchored after the @#VocGHissModc section
+// (the last named section before the step records). Layout per step:
+//   <note:1B> FF FF FF <var:1B> 00 00 00 00 00 00 00 01 00 00 00
+// where var is likely velocity / gate / slide (not yet decoded). Step
+// records start after a region of 0xFF padding. Reading stops when the
+// note byte is 0xFF (= empty / end-of-sequence sentinel).
+const VOC_HISS_MARKER = [0x40,0x23,0x56,0x6f,0x63,0x47,0x48,0x69,0x73,0x73,0x4d,0x6f,0x64]; // '@#VocGHissMod'
+
+export function decodeSequence(data) {
+    const unpacked = unpackMidi7bit(data);
+    const voc = findUnpackedMarker(unpacked, VOC_HISS_MARKER);
+    if (voc < 0) return null;
+    // The step records are preceded by a long run of 0xFF (the
+    // sequence-state padding region). Naive "first FF" doesn't work —
+    // the GHissVol sub-value inside VocGHissMod also contains 0xFF.
+    // Instead, scan for a run of at least PAD_MIN consecutive 0xFF.
+    const PAD_MIN = 50;
+    let i = voc + VOC_HISS_MARKER.length;
+    let padStart = -1;
+    while (i < unpacked.length - PAD_MIN) {
+        if (unpacked[i] === 0xFF) {
+            let ok = true;
+            for (let j = 1; j < PAD_MIN; j++) {
+                if (unpacked[i + j] !== 0xFF) { ok = false; break; }
+            }
+            if (ok) { padStart = i; break; }
+        }
+        i++;
+    }
+    if (padStart < 0) return null;
+    i = padStart;
+    while (i < unpacked.length && unpacked[i] === 0xFF) i++;
+    // First non-FF byte is the note of step 1.
+    const steps = [];
+    while (i + 16 <= unpacked.length) {
+        const note = unpacked[i];
+        if (note === 0xFF) break;       // end of sequence
+        if (note > 127) break;          // sanity
+        steps.push({
+            note,
+            v4: unpacked[i + 4],        // unknown — likely velocity / gate
+        });
+        i += 16;
+        if (steps.length > 64) break;   // safety
+    }
+    return steps.length > 0 ? steps : null;
+}
+
 // OSC Type: single 7-bit byte at data[0][14]. The #VCODType section is
 // always the first of the unpacked stream, with fixed offset 14 from the
 // start of the packed block. Nearest-match against OSC_TYPE_TABLE band
