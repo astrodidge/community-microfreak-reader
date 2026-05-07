@@ -25,8 +25,7 @@ import {
 import {sampleNameFromIdx} from "../model/samples";
 import {MSG_DATA, MSG_NAME, portById} from "../utils/midi";
 import {h, hs} from "../utils/hexstring";
-import {compressToEncodedURIComponent, decompressFromEncodedURIComponent} from "lz-string";
-import axios from "axios";
+import {decompressFromEncodedURIComponent} from "lz-string";
 import {getParameterByName} from "../utils/sharing";
 import {
     extractVcodBytes,
@@ -757,74 +756,6 @@ presetName(number) {  //TODO: change method name
     }
 */
 
-    get shortUrl() {
-        if (this.presets && this.presets.length && this.presets[this.preset_number]) {
-            return this.presets[this.preset_number].shortUrl;
-        } else {
-            return '';
-        }
-    }
-
-    async createShortUrl() {
-
-        /*
-        $ curl -v 'https://goto.studiocode.dev/rest/v2/short-urls'
-            -H 'Connection: keep-alive' -H 'Pragma: no-cache' -H 'Cache-Control: no-cache'
-            -H 'Accept: application/json, text/plain, * / *'
-            -H 'X-Api-Key: e94740ac-6796-4329-b5e0-87cc908b0c41'
-            -H 'Content-Type: application/json;charset=UTF-8'
-            -H 'Origin: https://link-admin.toto.dev'
-            -H 'Sec-Fetch-Site: same-site'
-            -H 'Sec-Fetch-Mode: cors'
-            -H 'Referer: https://link-admin.studiocode.dev/server/b523c241-8cdd-4847-b7f7-6b4d0bb5adcd/create-short-url'
-            -H 'Accept-Encoding: gzip, deflate, br'
-            -H 'Accept-Language: fr-CH,fr;q=0.9,en-US;q=0.8,en;q=0.7'
-            --data-binary '{"longUrl":"https://studiocode.dev/oioiejroiejrg","findIfExists":false}'
-         */
-
-        console.log("State.createShortUrl()");
-
-        if (this.presets && this.presets.length && this.presets[this.preset_number]) {
-
-            if (this.presets[this.preset_number].shortUrl) return this.presets[this.preset_number].shortUrl;    // not necessary is the state is observed
-
-            const zipped = compressToEncodedURIComponent(JSON.stringify(this.presets[this.preset_number]));
-            console.log(zipped.length, zipped);
-
-            // test uncompress:
-            // const u = decompressFromEncodedURIComponent(z);
-            // const b = z.toString('base64');
-            // const u = URLSafeBase64.encode(z);
-            // console.log(u.length, u);
-
-            const dataUrl = "https://studiocode.dev/microfreak-reader/?data=" + zipped;
-            console.log("dataUrl", dataUrl);
-
-            console.log("getShortUrl: will post");
-            let res = await axios.post(
-                'https://goto.studiocode.dev/rest/v2/short-urls',
-                {
-                    longUrl: dataUrl,
-                    findIfExists: true
-                }, {
-                    headers: {
-                        "X-Api-Key": "e94740ac-6796-4329-b5e0-87cc908b0c41"
-                    }
-                }
-            );
-
-            console.log("getShortUrl: has posted", res);
-
-            if (res.status === 200) {
-                this.presets[this.preset_number].shortUrl = res.data.shortUrl;
-                return this.presets[this.preset_number].shortUrl;   // not necessary is the state is observed
-            }
-
-            return null;
-        }
-    }
-
-
 }
 
 // https://mobx.js.org/best/decorators.html
@@ -841,8 +772,7 @@ decorate(State, {
     error: observable,
     oscOverridesVersion: observable,
     taggingEnabled: observable,
-    presetNull: computed,
-    shortUrl: computed
+    presetNull: computed
 });
 
 export const state = new State();

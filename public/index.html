@@ -2,6 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="utf-8"/>
+    <!--
+      Content Security Policy — browser refuses to load resources / execute
+      code from origins not listed here. Even if a dependency or user input
+      somehow produced an inline <script>, it wouldn't run unless it matched.
+      Hosts whitelisted for concrete uses:
+        - fonts.googleapis.com / fonts.gstatic.com: Google Fonts (Oswald)
+      'unsafe-inline' in script-src is needed because react-scripts 3.x
+      inlines the webpack-runtime bootstrap in the built index.html. If you
+      rebuild with INLINE_RUNTIME_CHUNK=false (.env), you can drop it.
+      Note: frame-ancestors can't be set via <meta> — add it as an HTTP
+      header on the webserver if you want clickjacking protection too.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none';"/>
     <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="theme-color" content="#000000"/>
@@ -14,7 +27,6 @@
 <meta property="og:type" content="website">
     <link href="https://fonts.googleapis.com/css?family=Oswald:300,400,500&display=swap" rel="stylesheet">
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json"/>
-    <script src="https://cdn.usefathom.com/script.js" site="XIWNXTFQ" excluded-domains="localhost" defer></script>
 </head>
 <body>
 <noscript>You need to enable JavaScript to run this app.</noscript>
