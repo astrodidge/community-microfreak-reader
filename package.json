@@ -29,7 +29,9 @@
     "electron": "electron .",
     "electron-dev": "concurrently \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron-pack": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --publish=never"
+    "dist": "npm run build && electron-builder --publish=never",
+    "deploy": "./deploy.sh",
+    "deploy:dry": "./deploy.sh --dry-run"
   },
   "eslintConfig": {
     "extends": "react-app"
