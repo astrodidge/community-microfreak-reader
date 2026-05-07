@@ -7,7 +7,6 @@ import {
     DEFAULT_msb_mask,
     DEFAULT_sign_mask,
     MOD_ASSIGN_DEST,
-    MOD_ASSIGN_SLOT,
     MOD_MATRIX_DESTINATION,
     MOD_MATRIX,
     multibytesValue,
@@ -18,9 +17,10 @@ import {
     MOD_SRC_KEY_ARP,
     MOD_SRC_PRESS,
     MOD_SRC_LFO,
-    MOD_SRC_ENV, FW1, FW2, CATEGORY,
+    MOD_SRC_ENV, FW2, CATEGORY,
     oscTypeName,
-    decodeSampleIdx
+    decodeSampleIdx,
+    decodeAssignSlot
 } from "../model";
 import {sampleNameFromIdx} from "../model/samples";
 import {MSG_DATA, MSG_NAME, portById} from "../utils/midi";
@@ -115,25 +115,15 @@ class State {
         return s;
     }
 
-    fwVersion() {   //TODO: not sure this is the right way to find the firmware version, but that seems to work.
-
-        const def = FW2;
-
-        if (!this.presets.length || (this.presets.length < this.preset_number) || !this.presets[this.preset_number]) {
-            return def;
-        }
-
-        if (!this.presets[this.preset_number]) {
-            return def;
-        }
-
-        const data = this.presets[this.preset_number].data;
-
-        if (data.length < 39) return 0;  //FIXME
-
-        return data[0][12] === 0x0C ? FW1 : def;
-        // console.log(data);
-        // return 2;
+    fwVersion() {
+        // Every preset is routed through the FW2 model entries. Decoders are
+        // marker-anchored on the unpacked stream (RE-32..RE-47), so they work
+        // identically across all 7 fmt-byte variants seen in the wild
+        // (0x0C/0x0D/0x0E/0x11/0x12/0x16/0x7F). The old FW1 dispatch on
+        // data[0][12] === 0x0C routed legacy presets through a stale table
+        // with mostly-null display mappings (Rise/Fall shape showed raw %
+        // instead of "%", Cutoff showed % instead of Hz, etc.).
+        return FW2;
     }
 
     currentOscTypeName() {
@@ -146,7 +136,7 @@ class State {
         if (!this.presets.length || !this.presets[index]) return null;
         const data = this.presets[index].data;
         if (!data || data.length < 1) return null;
-        const fw = data[0] && data[0][12] === 0x0C ? FW1 : FW2;
+        const fw = FW2;
         if (!this.taggingEnabled) return oscTypeName(data, fw);
         // Read observable so MobX re-runs this computation when overrides change.
         // eslint-disable-next-line no-unused-expressions
@@ -260,33 +250,13 @@ class State {
     }
 
     checkPreset(number) {
-
-        // if (global.dev) console.log("checkPreset", number);
-
+        // Every preset is now decoded via marker-anchored reads on the
+        // unpacked stream, so the old packed-position 'EPanelc' signature
+        // gate (which hid mod indicators on any preset matching it) is
+        // obsolete. fw is always FW2 (see fwVersion()).
         if (this.presets && this.presets.length && this.presets[number]) {
-
-            const D = this.presets[number].data;
-
-            this.presets[number].fw = D[0][12] === 0x0C ? FW1 : FW2;
-
-            // console.log(hs(D[16]));
-            // console.log(hs(D[17]));
-
-            // 1 (not ok):
-            // 00 63 01 00 00 40 23 47 00 65 6E 47 50 61 72 61 20 66 6F 6E 63 01 7F 7F 00 45 50 61 6E 65 6C 63
-            // 00 03 00 00 47 50 6F 6C 40 79 43 6E 74 63 01 7D 00 7F 47 50 72 73 74 56 00 6F 6C 63 18 00 00 46
-            // 2 (ok):
-            // 00 63 01 00 00 40 23 47 00 65 6E 47 50 61 72 61 00 66 6F 6E 63 01 00 00 00 47 50 6F 6C 79 43 6E
-            // 00 74 63 01 00 00 47 50 00 72 73 74 56 6F 6C 63 00 18 00 00 46 56 6F 6C 10 75 6D 65 63 66 00 00
-
-            if (hs(D[16].slice(-7)) === '45 50 61 6E 65 6C 63' && hs(D[17].slice(0, 4)) === '00 03 00 00') {
-                if (global.dev) console.log("unsupported factory preset", number, hs(D[16]), hs(D[17]));
-                this.presets[number].supported = false;
-            } else {
-                // if (global.dev) console.log("supported preset", number);
-                this.presets[number].supported = true;  // this will add the property if it does not yet exist
-            }
-
+            this.presets[number].fw = FW2;
+            this.presets[number].supported = true;
         }
     }
 
@@ -626,9 +596,7 @@ setPresetNumber(number) {
 
         if (data.length < 39) return 0;  //FIXME
 
-        // RE-32: always use the unpacked-MIDI decoder, regardless of fw.
-        // Works correctly for FW2 and shows something for FW1 — the user
-        // can judge correctness on their own.
+        // RE-32: always use the unpacked-MIDI marker-anchored decoder.
         const raw = decodeModMatrixFW2(data, src, dest);
         if (raw === null) return 0;
         return return_raw ? raw : (Math.round(raw * 1000 / 32768) / 10);
@@ -639,18 +607,14 @@ setPresetNumber(number) {
      * @param slot
      */
     modAssignDest(slot) {
-
         if (!this.presets.length || (this.presets.length < this.preset_number) || !this.presets[this.preset_number]) {
             return 0;
         }
-
         const data = this.presets[this.preset_number].data;
-
         if (data.length < 39) return;  //FIXME
-        const m = MOD_ASSIGN_SLOT[this.presets[this.preset_number].fw][slot].mod_group;
-        const dest_num = data[ m[0] ][ m[1] ];
-
-        return MOD_ASSIGN_DEST[dest_num];  // ? MOD_ASSIGN_DEST[group_num] : null;
+        const slotInfo = decodeAssignSlot(data, slot);
+        if (!slotInfo) return null;
+        return MOD_ASSIGN_DEST[slotInfo.modGroup];
     };
 
     /**
@@ -658,16 +622,14 @@ setPresetNumber(number) {
      * @param slot
      */
     modAssignControlNum(slot) {
-
         if (!this.presets.length || (this.presets.length < this.preset_number)) {
             return 0;
         }
-
         const data = this.presets[this.preset_number].data;
-
         if (data.length < 39) return;  //FIXME
-        const m = MOD_ASSIGN_SLOT[this.presets[this.preset_number].fw][slot].control;
-        return data[ m[0] ][ m[1] ];
+        const slotInfo = decodeAssignSlot(data, slot);
+        if (!slotInfo) return 0;
+        return slotInfo.control;
     };
 
     modDestName(dest) {

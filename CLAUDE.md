@@ -26,6 +26,16 @@ Community fork of MicroFreak Reader — a React/Electron app for reading and dis
   = 5-byte source label (`CEG1c`, `CEG2c`, `CLFOc`, `CXprc`, `CKeyc`) + 3
   trailing bytes `(pad, LSB, MSB)`; cell value = signed 16-bit little-endian
   → percent of 32768. See `reverse-engineering/followups.md` §7 for history.
+- **Assign1/2/3 slot wiring (RE-48).** Which control/destination each user
+  Assign row is wired to is *separate* from the matrix cell amounts. Each
+  slot has its own marker in the unpacked stream — `GAssign1c` /
+  `GAssign2c` / `GAssign3c` — followed by `<0x00 separator> <control:1B>
+  <mod_group:1B>`. `mod_group` indexes `MOD_ASSIGN_DEST` (0x00=OSC,
+  0x01=FILTER, 0x02=CYC_ENV, ...); `control` indexes the inner `.control`
+  map. `decodeAssignSlot()` in `src/model/index.js`. The previous
+  `MOD_ASSIGN_SLOT[FW1/FW2]` packed-position table only worked on fmt
+  0x16/0x0D — on 0x12 it read into the marker text (`'GAssign...'`),
+  returning ASCII garbage and hiding the mod target entirely.
 - **Presets have 146 data blocks of 32 bytes each** (≈ 4.6 KB total), but
   the legacy code only reads the first 40 blocks (`MESSAGES_TO_READ_FOR_PRESET`
   in `src/utils/midi.js`). Mod-matrix amounts live in blocks beyond 40 —
@@ -37,9 +47,14 @@ Community fork of MicroFreak Reader — a React/Electron app for reading and dis
     - `0x0D`, `0x0E`, `0x11`, `0x12`, `0x7F`: intermediate factory fmts
     - `0x16` (22): user, modern firmware (what MF writes on save)
   The React code's `fwVersion()` lumps everything non-0x0C together as FW2.
-  Since RE-32..RE-45 the model reads are fully **marker-anchored** (search
-  for ASCII markers like `@#LFOEShape`, `@#VCFDType`, `#VCODType`, etc. in
-  the unpacked stream) — this makes reads robust across all fmts.
+  Since RE-32..RE-48 the model reads are fully **marker-anchored** (search
+  for ASCII markers like `@#LFOEShape`, `@#VCFDType`, `#VCODType`,
+  `GAssign1c`, etc. in the unpacked stream) — this makes reads robust
+  across all fmts. **No FW1/FW2 dispatch any more**: `fwVersion()` always
+  returns FW2, and the `data[0][12] === 0x0C` legacy gate (plus the
+  `'EPanelc'` packed-position "supported" gate that hid mod indicators on
+  some factory presets) are gone. Per-preset `.fw` field is still set on
+  the preset struct but is constant FW2.
 - **OSC Type: firmware-count formula (RE-46).** `data[0][12]` (the fmt
   byte, also `unpacked[vcod_marker+10]`) equals the **number of OSC
   types the firmware knew at save time**: 12 → 13 → 14 → 17 → 18 → 22

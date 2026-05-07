@@ -116,6 +116,18 @@ Items still open:
   LE value is `(sampleIdx - 1) × 258` (MSB = idx-1, LSB = 2×MSB). 16/16
   match on user-tagged presets. `decodeSampleIdx()` + factory sample
   list in `src/model/samples.js`.
+- **Mod-matrix Assign1/2/3 slot wiring (RE-48)**: the per-slot
+  destination (which control each user Assign row is wired to) lives in
+  3 separate markers in the unpacked stream: `GAssign1c` / `GAssign2c` /
+  `GAssign3c`, each followed by `<0x00 separator> <control:1B>
+  <mod_group:1B>`. Replaces `MOD_ASSIGN_SLOT[FW1/FW2]` packed-position
+  table, which only happened to land on the right bytes for fmt 0x16
+  and 0x0D — on 0x12 etc. the offsets fell inside marker text and the
+  mod target was hidden entirely. Verified across all 6 real fmt
+  variants in the user's 512-preset dump (0x0C/0x0D/0x0E/0x11/0x12/0x16);
+  the 3 `0x7F` Init slots have no marker and decoder returns null
+  cleanly. `decodeAssignSlot()` in `src/model/index.js`; wired via
+  `State.modAssignDest()` and `State.modAssignControlNum()`.
 - **AMP_MOD**: location unclear; not yet migrated. Visible in UI but
   correctness not verified by user.
 

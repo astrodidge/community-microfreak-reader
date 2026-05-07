@@ -110,9 +110,13 @@ class Control extends Component {
         if (cc === OSC_TYPE) {
             const data = S.presets[S.preset_number] && S.presets[S.preset_number].data;
             const autoDecoded = data ? (oscTypeName(data, fw) || 'n.a.') : '—';
+            // Show the "mapped" sub-label only when a tagging override is
+            // active — otherwise the auto-decoded value IS the type, and the
+            // label is just noise.
+            const hasOscOverride = !!S.currentOscTypeOverride();
             oscMappedBlock = (
                 <div className="osc-name">
-                    <div className="osc-sub-label">mapped</div>
+                    {hasOscOverride && <div className="osc-sub-label">mapped</div>}
                     <div className="osc-mapped-value">{oscLabel(autoDecoded)}</div>
                 </div>
             );

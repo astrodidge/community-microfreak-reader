@@ -888,6 +888,31 @@ export function decodeParaphonic(data)    { return readSectionParam(data, GEN_SE
 // matrix — gives bipolar signed 16-bit -32768..+32767.
 export function decodeFilterAmt(data)     { return decodeModMatrixFW2(data, MOD_SRC_ENV, FILTER_CUTOFF); }
 
+// Mod-matrix Assign1/2/3 slot wiring. The 3 user-assignable matrix rows are
+// tagged in the unpacked stream by 'GAssign1c' / 'GAssign2c' / 'GAssign3c'
+// markers. Layout immediately after each marker:
+//   <marker:9 bytes> <0x00 separator> <control:1 byte> <mod_group:1 byte>
+// The previous packed-position MOD_ASSIGN_SLOT table only happened to land
+// on these bytes for fmt 0x16 / 0x0D presets; on 0x12 (and others) the
+// packed offsets fell inside the marker text, returning ASCII garbage.
+const SUB_GASSIGN1 = [0x47,0x41,0x73,0x73,0x69,0x67,0x6e,0x31,0x63]; // 'GAssign1c'
+const SUB_GASSIGN2 = [0x47,0x41,0x73,0x73,0x69,0x67,0x6e,0x32,0x63]; // 'GAssign2c'
+const SUB_GASSIGN3 = [0x47,0x41,0x73,0x73,0x69,0x67,0x6e,0x33,0x63]; // 'GAssign3c'
+
+export function decodeAssignSlot(data, slot) {
+    const marker = slot === ASSIGN1 ? SUB_GASSIGN1
+                 : slot === ASSIGN2 ? SUB_GASSIGN2
+                 : slot === ASSIGN3 ? SUB_GASSIGN3 : null;
+    if (!marker) return null;
+    const unpacked = unpackMidi7bit(data);
+    const at = findUnpackedMarker(unpacked, marker);
+    if (at < 0) return null;
+    const control  = unpacked[at + marker.length + 1];
+    const modGroup = unpacked[at + marker.length + 2];
+    if (control === undefined || modGroup === undefined) return null;
+    return { control, modGroup };
+}
+
 // OSC Type: single 7-bit byte at data[0][14]. The #VCODType section is
 // always the first of the unpacked stream, with fixed offset 14 from the
 // start of the packed block. Nearest-match against OSC_TYPE_TABLE band
@@ -1232,7 +1257,7 @@ export const CONTROL = {
             LSB: [6, 22],
             msb: [6, 16, 0x20],
             cc: 5,
-            mapping: null,
+            mapping: _rangedPow(10000, 3, "ms"),
             name: "Glide",
         },
         [OSC_TYPE]: {
@@ -1316,13 +1341,13 @@ export const CONTROL = {
         [CYCLING_ENV_RISE]: {
             decoder: decodeCycEnvRise,
             MSB: [4, 6], LSB: [4, 5], msb: [4, 0, 0x10],
-            cc: 102, mapping: null,
+            cc: 102, mapping: _rangedPow(10000, 3, "ms"),
             name: 'Rise', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_FALL]: {
             decoder: decodeCycEnvFall,
             MSB: [5, 2], LSB: [5, 1], msb: [5, 0, 0x01],
-            cc: 103, mapping: null,
+            cc: 103, mapping: _rangedPow(10000, 3, "ms"),
             name: 'Fall', mod_group: MOD_GROUP_CYCLING_ENV
         },
         [CYCLING_ENV_HOLD]: {
@@ -1398,13 +1423,13 @@ export const CONTROL = {
         [ENVELOPE_ATTACK]: {
             decoder: decodeEnvAttack,
             MSB: [14, 29], LSB: [14, 28], msb: [14, 24, 0x08],
-            cc: 105, mapping: null,
+            cc: 105, mapping: _rangedPow(10000, 3, "ms"),
             name: 'Attack', mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_DECAY]: {
             decoder: decodeEnvDecay,
             MSB: [15, 10], LSB: [15, 9], msb: [15, 8, 0x01],
-            cc: 106, mapping: null,
+            cc: 106, mapping: _rangedPow(25000, 3, "ms"),
             name: 'Decay/Rel', mod_group: MOD_GROUP_ENVELOPE
         },
         [ENVELOPE_SUSTAIN]: {
