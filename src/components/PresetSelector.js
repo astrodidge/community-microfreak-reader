@@ -487,7 +487,66 @@ class PresetSelector extends Component {
             return window.URL.revokeObjectURL(url);
         }, 1000);
     };
-    
+
+    exportAsTxt = () => {
+        const S = this.props.state;
+        const pad = (s, n) => {
+            s = (s == null ? '' : String(s));
+            return s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length);
+        };
+        const padLeft = (s, n) => {
+            s = (s == null ? '' : String(s));
+            return s.length >= n ? s.slice(-n) : ' '.repeat(n - s.length) + s;
+        };
+
+        const W_NO = 4, W_NAME = 15, W_OSC = 22, W_CAT = 10;
+        const header =
+            padLeft('#', W_NO) + '  ' +
+            pad('Name', W_NAME) + '  ' +
+            pad('OSC Type', W_OSC) + '  ' +
+            pad('Category', W_CAT);
+        const sep = '-'.repeat(header.length);
+        const lines = [header, sep];
+
+        for (let i = 0; i < 512; i++) {
+            if (!(S.presets.length && S.presets.length > i && S.presets[i])) continue;
+            const preset = S.presets[i];
+            if (!preset.name && !preset.data && !preset.cat) continue;
+            if (preset.name === 'Init') continue;
+
+            const oscType = (S.oscTypeNameFor(i) || '').replace(/\s+/g, ' ').trim();
+            const cat = (S.presetCat(i) || '').replace(/\s+/g, ' ').trim();
+
+            lines.push(
+                padLeft(String(i + 1), W_NO) + '  ' +
+                pad(preset.name || '', W_NAME) + '  ' +
+                pad(oscType, W_OSC) + '  ' +
+                pad(cat, W_CAT)
+            );
+        }
+
+        const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+
+        const now = new Date();
+        const timestamp =
+            now.getUTCFullYear() + '-' +
+            ('0' + (now.getUTCMonth() + 1)).slice(-2) + '-' +
+            ('0' + now.getUTCDate()).slice(-2) + '-' +
+            ('0' + now.getUTCHours()).slice(-2) +
+            ('0' + now.getUTCMinutes()).slice(-2) +
+            ('0' + now.getUTCSeconds()).slice(-2);
+
+        const shadowlink = document.createElement('a');
+        shadowlink.download = 'microfreak-presets-' + timestamp + '.txt';
+        shadowlink.style.display = 'none';
+        shadowlink.href = url;
+        document.body.appendChild(shadowlink);
+        shadowlink.click();
+        document.body.removeChild(shadowlink);
+        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    };
+
     render() {
 
         const S = this.props.state;
@@ -545,6 +604,7 @@ class PresetSelector extends Component {
                     <button type="button midi-ok" onClick={this.importFromFile}>Load file</button>
                     <button type="button midi-ok" onClick={this.exportAsFile}>Save to file</button>
 					<button type="button midi-ok" onClick={this.exportAsCsv}>Export CSV</button>
+					<button type="button midi-ok" onClick={this.exportAsTxt} title="Export preset list as plain text (no, name, osc type, category)">Export TXT</button>
                     <a href={"?list=1"} target="_blank" rel="noopener noreferrer">
     				<button type="button midi-ok">List View</button>
 					</a>
